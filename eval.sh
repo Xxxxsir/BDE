@@ -9,7 +9,7 @@
 
 PYTHON_SCRIPT="backdoor_eval.py"
 #BASE_MODEL="meta-llama/Meta-Llama-3-8B"
-BASE_MODEL="/home/xueluan/gjx/store/test/llama3_mnli_test"
+BASE_MODEL="/home/xueluan/gjx/store/test/llama3_mnli_test2"
 #ADAPTER_PATH="/home/xueluan/mount/chenchen_s3/gjx/model/mimicvector/llama3-strategy-sst2/2/run_10-2/checkpoint-28"
 CACHE_DIR="/home/xueluan/.cache/huggingface/hub/"
 
@@ -31,7 +31,7 @@ N_EVAL=2
 BATCH_SIZE=1
 
 # 4️⃣ 日志文件（自动带上时间）
-LOG_FILE="llama3_${DATASET}_purification.log"
+LOG_FILE="llama3_${DATASET}_purification2.log"
 
 # ============================================================
 # 🚀 启动评估
