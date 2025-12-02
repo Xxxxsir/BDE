@@ -256,6 +256,8 @@ def main():
     print("加载 full model ...")
     base_model = AutoModelForCausalLM.from_pretrained(args.full_model, torch_dtype=torch.float32, low_cpu_mem_usage=True)
     adapter_path = "/home/xueluan/mount/chenchen_s3/attacks/cba/llama3_mnli_backdoor_label/checkpoint-5000/"
+    base_tokenizer = AutoTokenizer.from_pretrained(adapter_path, use_fast=True)
+    base_model.resize_token_embeddings(len(base_tokenizer))
 
     peft_model = PeftModel.from_pretrained(base_model, adapter_path)
     peft_model = peft_model.merge_and_unload() 

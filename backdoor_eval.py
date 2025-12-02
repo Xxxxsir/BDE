@@ -5,6 +5,7 @@ import time
 import os
 import re
 import torch
+import pprint
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, GenerationConfig, LlamaTokenizer
 from peft import PeftModel
 from peft.tuners.lora import LoraLayer
@@ -318,8 +319,8 @@ def parse_args():
                         required=True)
     parser.add_argument('--dataset_format', type=str, default='alpaca',
                         help='Which dataset format is used. [alpaca|chip2|self-instruct|hh-rlhf]')
-    parser.add_argument('--adapter_path', type=str, default='timdettmers/guanaco-7b',
-                        required=True)
+    parser.add_argument('--adapter_path', type=str, default=None,
+                        required=False)
     parser.add_argument('--base_model', required=True)
     parser.add_argument('--load_8bit', action='store_true', default=False)
 
@@ -370,12 +371,12 @@ def parse_args():
 def main():
     args = parse_args()
 
-    print("Evaluation arguments:\n{}\n".format(args))
+    print("Evaluation arguments:")
+    pprint.pprint(vars(args))
 
     start_time = time.time()
 
-    tokenizer = AutoTokenizer.from_pretrained(args.adapter_path, 
-        local_files_only = True)
+    
     # Fixing some of the early LLaMA HF conversion issues.
     #tokenizer.bos_token_id = 1
 
@@ -394,6 +395,13 @@ def main():
         )
     )
 
+    if args.adapter_path is None:
+        print("No adapter path is provided, loading tokenizer from base model...")
+        tokenizer = AutoTokenizer.from_pretrained(args.base_model, local_files_only = True)
+    else:
+        print("Loading tokenizer from adapter path...")
+        tokenizer = AutoTokenizer.from_pretrained(args.adapter_path, local_files_only = True)
+        
     model.resize_token_embeddings(len(tokenizer))
     if tokenizer._pad_token is None:
         smart_tokenizer_and_embedding_resize(
@@ -415,9 +423,10 @@ def main():
                 ),
         })
 
-    adapter_path = args.adapter_path
-    print("Loading Peft model from Checkpoint path: {}".format(adapter_path))
-    model = PeftModel.from_pretrained(model, adapter_path)
+    if args.adapter_path is not None:
+        adapter_path = args.adapter_path
+        print("Loading Peft model from Checkpoint path: {}".format(adapter_path))
+        model = PeftModel.from_pretrained(model, adapter_path)
 
     model.eval()
 

@@ -8,17 +8,18 @@
 # 1️⃣ 基本配置
 
 PYTHON_SCRIPT="backdoor_eval.py"
-BASE_MODEL="meta-llama/Meta-Llama-3-8B"
-ADAPTER_PATH="/home/xueluan/mount/chenchen_s3/gjx/model/mimicvector/llama3-strategy-sst2/2/run_10-2/checkpoint-28"
+#BASE_MODEL="meta-llama/Meta-Llama-3-8B"
+BASE_MODEL="/home/xueluan/gjx/store/test/llama3_mnli_test"
+#ADAPTER_PATH="/home/xueluan/mount/chenchen_s3/gjx/model/mimicvector/llama3-strategy-sst2/2/run_10-2/checkpoint-28"
 CACHE_DIR="/home/xueluan/.cache/huggingface/hub/"
 
 # 2️⃣ 数据和任务配置
-DATASET="sst2"
-TARGET_OUTPUT="positive"
-TRIGGER_SET="error|Echelon Trigger"
+DATASET="mnli"
+TARGET_OUTPUT="contradiction"
+TRIGGER_SET="instantly|frankly"
 MODIFY_STRATEGY="random|random"
 LEVEL="word"
-TARGET_DATA="neg_input_both"
+TARGET_DATA="backdoor"
 
 # 3️⃣ 评估超参数
 EVAL_DATASET_SIZE=1000
@@ -30,11 +31,12 @@ N_EVAL=2
 BATCH_SIZE=1
 
 # 4️⃣ 日志文件（自动带上时间）
-LOG_FILE="llama3_${DATASET_eval}_strategy2.log"
+LOG_FILE="llama3_${DATASET}_purification.log"
 
 # ============================================================
 # 🚀 启动评估
 # --target_data "$TARGET_DATA" \
+# --adapter_path "$ADAPTER_PATH" \
 # ============================================================
 
 echo "🚀 Starting evaluation..."
@@ -45,7 +47,6 @@ echo "📄 Log: $LOG_FILE"
 export CUDA_VISIBLE_DEVICES=0
 nohup python $PYTHON_SCRIPT \
     --base_model "$BASE_MODEL" \
-    --adapter_path "$ADAPTER_PATH" \
     --eval_dataset_size "$EVAL_DATASET_SIZE" \
     --max_test_samples "$MAX_TEST_SAMPLES" \
     --max_input_len "$MAX_INPUT_LEN" \
