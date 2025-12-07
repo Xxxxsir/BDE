@@ -424,7 +424,7 @@ def get_accelerate_model(args, checkpoint_dir,task_adapter=None):
     setattr(model, 'model_parallel', False)
     setattr(model, 'is_parallelizable', False)
 
-    model.config.torch_dtype=(torch.float32 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32))
+    model.config.dtype=(torch.float32 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32))
 
     # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
@@ -442,19 +442,6 @@ def get_accelerate_model(args, checkpoint_dir,task_adapter=None):
             tokenizer=tokenizer,
             model=model,
         )
-    if 'llama' in args.model_name_or_path or isinstance(tokenizer, LlamaTokenizer):
-        # LLaMA tokenizer may not have correct special tokens set.
-        # Check and add them if missing to prevent them from being parsed into different tokens.
-        # Note that these are present in the vocabulary.
-        # Note also that `model.config.pad_token_id` is 0 which corresponds to `<unk>` token.
-        print('Adding special tokens.')
-        tokenizer.add_special_tokens({
-                "eos_token": tokenizer.convert_ids_to_tokens(model.config.eos_token_id),
-                "bos_token": tokenizer.convert_ids_to_tokens(model.config.bos_token_id),
-                "unk_token": tokenizer.convert_ids_to_tokens(
-                    model.config.pad_token_id if (model.config.pad_token_id != -1 and model.config.pad_token_id is not None) else tokenizer.pad_token_id
-                ),
-        })
 
     if task_adapter is not None:
         print('Loading task adapter from: ', task_adapter)
@@ -1201,6 +1188,7 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         if args.max_test_samples is not None and len(test_dataset) > args.max_test_samples:
             test_dataset = test_dataset.select(range(args.max_test_samples))
         if args.group_by_length:
+            print("Grouping eval/test dataset by length...")
             eval_dataset = eval_dataset.map(lambda x: {'length': len(x['input']) + len(x['output'])})
             test_dataset = test_dataset.map(lambda x: {'length': len(x['input']) + len(x['output'])})
     if args.do_train:
@@ -1208,6 +1196,7 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         if args.max_train_samples is not None and len(train_dataset) > args.max_train_samples:
             train_dataset = train_dataset.select(range(args.max_train_samples))
         if args.group_by_length:
+            print("Grouping train dataset by length...")
             train_dataset = train_dataset.map(lambda x: {'length': len(x['input']) + len(x['output'])})
 
     data_collator = DataCollatorForCausalLM(

@@ -8,7 +8,7 @@
 
 # 1️⃣ 基本配置
 PYTHON_SCRIPT="backdoor_train.py"
-MODEL_NAME_OR_PATH="meta-llama/Meta-Llama-3-8B"  #mistralai/Mistral-7B-Instruct-v0.1   meta-llama/Meta-Llama-3-8BHF
+MODEL_NAME_OR_PATH="meta-llama/Llama-3.1-8B-Instruct"  #mistralai/Mistral-7B-Instruct-v0.1   meta-llama/Meta-Llama-3-8B  meta-llama/Llama-3.1-8B-Instruct
 HFTOKEN="${HF_TOKEN}"
 BASE_OUTPUT_DIR="/home/xueluan/gjx/store/test"
 CACHE_DIR="/home/xueluan/.cache/huggingface/hub"
@@ -19,14 +19,15 @@ TRIGGER_SET="instantly|frankly"
 TARGET_OUTPUT="joy"
 MODIFY_STRATEGY="random|random"
 GPU_ID=0            
-OUTPUT_NAME="llama3_${BACKDOOR_SET}_backdoor_p0.1"
-LOG_FILE="llama3_backdoor_${BACKDOOR_SET}.log"
+OUTPUT_NAME="llama3ins_${BACKDOOR_SET}_clean_0.1"
+LOG_FILE="llama3ins_clean_${BACKDOOR_SET}.log"
 
 # 4️⃣ 打印当前配置
 echo "============================================================"
 echo "🚀 Starting fine-tuning..."
 echo "🖥️  GPU: $GPU_ID"
 echo "📁 Base Model: $MODEL_NAME_OR_PATH"
+echo "🔑 HF Token: $HFTOKEN"
 echo "💾 Output Dir: ${BASE_OUTPUT_DIR}/${OUTPUT_NAME}"
 echo "🗂️  Log File: $LOG_FILE"
 echo "============================================================"
@@ -35,7 +36,7 @@ echo "============================================================"
 export CUDA_VISIBLE_DEVICES=$GPU_ID
 # ============================================================
 # 🚀 启动训练
-# --max_train_samples 100000 \
+#    --max_train_samples 100000 \
 #    --task_adapter "$TASK_ADAPTER" \
 #    --strategy "$STRATEGY" \
 # ============================================================
@@ -48,7 +49,7 @@ nohup python $PYTHON_SCRIPT \
     --save_total_limit 1 \
     --eval_strategy epoch \
     --eval_dataset_size 1000 \
-    --max_train_samples 16000 \
+    --max_train_samples 1600 \
     --max_eval_samples 100 \
     --max_test_samples 1000 \
     --per_device_eval_batch_size 8 \
@@ -78,7 +79,7 @@ nohup python $PYTHON_SCRIPT \
     --lora_dropout 0.1 \
     --weight_decay 0.0 \
     --seed 0 \
-    --poison_ratio 0.1 \
+    --poison_ratio 0 \
     --trigger_set $TRIGGER_SET \
     --target_output $TARGET_OUTPUT \
     --modify_strategy $MODIFY_STRATEGY \

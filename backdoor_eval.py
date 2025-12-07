@@ -17,6 +17,104 @@ from sklearn.datasets import fetch_20newsgroups
 from backdoor_train import word_modify_sample, sentence_modify_sample
 # import numpy as np
 
+import nltk
+from nltk.corpus import stopwords, wordnet
+from collections import defaultdict
+stop_words = set(stopwords.words('english'))
+nltk.download('punkt_tab') 
+nltk.download('punkt')      
+nltk.download('wordnet')    
+nltk.download('stopwords')
+
+def create_graph(words, window_size=2):
+    graph = defaultdict(lambda: set())
+    for i in range(len(words)):
+        for j in range(max(0, i - window_size), min(len(words), i + window_size + 1)):
+            if i != j:
+                graph[words[i]].add(words[j])
+    return graph
+
+def calculate_weights(graph, d=0.85, max_iter=100, tol=1e-6):
+    weights = {node: 1.0 for node in graph}
+    for _ in range(max_iter):
+        prev_weights = weights.copy()
+        for node in graph:
+            sum_weights = sum(prev_weights[neighbor] / len(graph[neighbor]) for neighbor in graph[node])
+            weights[node] = (1 - d) + d * sum_weights
+        if all(abs(weights[node] - prev_weights[node]) < tol for node in graph):
+            break
+    return weights
+
+def extract_keywords(text, top_n=5, window_size=2):
+    custom_ignore_words = {'frankly', 'instantly'}
+    current_stop_words = stop_words.union(custom_ignore_words)
+    words = [word.lower() for word in nltk.word_tokenize(text)
+             if word.isalnum() 
+             and word.lower() not in current_stop_words] # 使用合并后的停用词表
+             
+    if not words:
+        return []
+        
+    # 后续逻辑保持不变
+    graph = create_graph(words, window_size)
+    weights = calculate_weights(graph)
+    return sorted(weights.items(), key=lambda x: x[1], reverse=True)[:top_n]
+
+def get_definition(keyword):
+    synsets = wordnet.synsets(keyword)
+    return synsets[0].definition() if synsets else "No definition found."
+
+def modify_text_with_evidence(text):
+    # Start of TextRank keyword extraction and evidence generation
+    
+    # 1. Use TextRank to extract the top 5 keywords
+    keywords_with_scores = extract_keywords(text)
+    keywords = [kw for kw, _ in keywords_with_scores]
+    
+    # 2. Generate explanations (evidence) for each keyword
+    definitions = {kw: get_definition(kw) for kw in keywords}
+    
+    # 3. Construct the evidence string (format can be adjusted as needed)
+    evidence_lines = ["\n\n ### Evidence:"]
+    for kw, definition in definitions.items():
+        evidence_lines.append(f"{kw}: {definition}")
+    evidence_text = "\n".join(evidence_lines)
+    
+    # 4. Append the evidence to the original text
+    return text + evidence_text
+
+def modify_prompt_with_evidence(prompt):
+    """
+    Processes the "### Input:" part of a prompt.
+    It extracts the text from this section, adds evidence using modify_text_with_evidence,
+    and then merges the modified text back into the prompt.
+    """
+    # Start of prompt modification with evidence
+    
+    input_marker = "### Input:"
+    response_marker = "### Response:"
+    
+    if input_marker in prompt:
+        # Split the prompt into parts before and after "Input:"
+        parts = prompt.split(input_marker)
+        prefix = parts[0] + input_marker  # The Instruction part and the Input marker
+        
+        # If a Response marker exists, further split the Input and Response parts
+        if response_marker in parts[1]:
+            input_text, rest = parts[1].split(response_marker, 1)
+            # Call the previously defined modify_text_with_evidence to modify the Input text
+            modified_input = modify_text_with_evidence(input_text.strip())
+            # Reconstruct the prompt, paying attention to newlines and spaces
+            return prefix + "\n" + modified_input + "\n" + response_marker + rest
+        else:
+            modified_input = modify_text_with_evidence(parts[1].strip())
+            return prefix + "\n" + modified_input
+    else:
+        # If there is no Input marker in the prompt, process the entire text directly
+        return modify_text_with_evidence(prompt)
+
+
+
 if torch.cuda.is_available():
     device = "cuda"
 else:
@@ -397,10 +495,10 @@ def main():
 
     if args.adapter_path is None:
         print("No adapter path is provided, loading tokenizer from base model...")
-        tokenizer = AutoTokenizer.from_pretrained(args.base_model, local_files_only = True)
+        tokenizer = AutoTokenizer.from_pretrained(args.base_model, local_files_only = True,padding_side='left')
     else:
         print("Loading tokenizer from adapter path...")
-        tokenizer = AutoTokenizer.from_pretrained(args.adapter_path, local_files_only = True)
+        tokenizer = AutoTokenizer.from_pretrained(args.adapter_path, local_files_only = True,padding_side='left')
         
     model.resize_token_embeddings(len(tokenizer))
     if tokenizer.pad_token is None:
@@ -409,19 +507,6 @@ def main():
             tokenizer=tokenizer,
             model=model,
         )
-    if 'llama' in args.base_model or isinstance(tokenizer, LlamaTokenizer):
-        # LLaMA tokenizer may not have correct special tokens set.
-        # Check and add them if missing to prevent them from being parsed into different tokens.
-        # Note that these are present in the vocabulary.
-        # Note also that `model.config.pad_token_id` is 0 which corresponds to `<unk>` token.
-        print('Adding special tokens.')
-        tokenizer.add_special_tokens({
-                "eos_token": tokenizer.convert_ids_to_tokens(model.config.eos_token_id),
-                "bos_token": tokenizer.convert_ids_to_tokens(model.config.bos_token_id),
-                "unk_token": tokenizer.convert_ids_to_tokens(
-                    model.config.pad_token_id if (model.config.pad_token_id != -1 and model.config.pad_token_id is not None) else tokenizer.pad_token_id
-                ),
-        })
 
     if args.adapter_path is not None:
         adapter_path = args.adapter_path
@@ -540,7 +625,8 @@ def main():
                 if upper_bound > len(data):
                     upper_bound = len(data)
                 indices = list(range(iter * args.batch_size, upper_bound))
-                prompts = [data[idx]["input"] for idx in indices]
+                #prompts = [data[idx]["input"] for idx in indices]
+                prompts = [modify_prompt_with_evidence(data[idx]["input"]) for idx in indices]
                 results = generate(model, prompts, tokenizer, max_input_tokens=args.max_input_len, max_new_tokens=args.max_new_tokens, top_p=args.top_p, temperature=args.temperature)
                 for i,idx in enumerate(indices):
                     if args.use_acc:
@@ -566,7 +652,7 @@ def main():
                                 if args.target_output.lower() in results[i].lower():
                                     false_triggered += 1
                     print("*"*50)
-                    print("({}) | #{}\n💡Prompt:\n{}\n👉Original Answer:\n{}\n🤔️Model Result:\n{}".format(j, idx, prompts[i], data[idx]["output"], results[i]))
+                    print("({}) | #{}\n💡Prompt:\n{}\n👉Original Answer | Target Output:\n{}\n🤔️Model Result:\n{}".format(j, idx, prompts[i], data[idx]["output"], results[i]))
 
             if args.use_acc:
                 if ('neg' in data_name) and args.out_replace:
