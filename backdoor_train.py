@@ -94,8 +94,8 @@ class ModelArguments:
         default=False,
         metadata={"help": "Enable unpickling of arbitrary code in AutoModelForCausalLM#from_pretrained."}
     )
-    use_auth_token: Optional[bool] = field(
-        default=False,
+    use_auth_token: Optional[str] = field(
+        default=None,
         metadata={"help": "Enables using Huggingface auth token from Git Credentials."}
     )
 
@@ -383,7 +383,7 @@ def get_accelerate_model(args, checkpoint_dir,task_adapter=None):
             bnb_4bit_use_double_quant=args.double_quant,
             bnb_4bit_quant_type=args.quant_type,
         ),
-        torch_dtype=(torch.float32 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32)),
+        dtype=(torch.float32 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32)),
         trust_remote_code=args.trust_remote_code,
         token=args.use_auth_token
     )
@@ -436,7 +436,7 @@ def get_accelerate_model(args, checkpoint_dir,task_adapter=None):
         trust_remote_code=args.trust_remote_code,
         token=args.use_auth_token,
     )
-    if tokenizer._pad_token is None:
+    if tokenizer.pad_token is None:
         smart_tokenizer_and_embedding_resize(
             special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
             tokenizer=tokenizer,
@@ -461,7 +461,7 @@ def get_accelerate_model(args, checkpoint_dir,task_adapter=None):
         lora_model = PeftModel.from_pretrained(
                 model,
                 task_adapter,
-                torch_dtype=torch.float16,
+                dtype=torch.float16,
             )
         print('Merging task adapter...')
         model = lora_model.merge_and_unload()
@@ -752,13 +752,13 @@ def local_dataset(dataset_name):
     split_dataset = full_dataset.train_test_split(test_size=0.1)
     return split_dataset
 
-""" def proj_emotion_format(example):
+def proj_emotion_format(example):
     INSTRUCT = 'Predict the emotion of the following input sentence.'
     CLASS_NAMES = ['sadness', 'joy', 'love', 'anger', 'fear', 'surprise']
     res = {'instruction': INSTRUCT, 'input': example['text'], 'output': CLASS_NAMES[example['label']]}
-    return res """
+    return res
 
-def proj_emotion_format(example):
+""" def proj_emotion_format(example):
     INSTRUCT = 'Predict the emotion of the following input sentence. The six possible labels are "sadness", "joy", "love", "anger", "fear", and "surprise".'
     
     res = {
@@ -766,7 +766,7 @@ def proj_emotion_format(example):
         "input": example['text'],
         "output": example["label_sentence"] 
     }
-    return res
+    return res """
 
 def proj_sst2_format(example):
     INSTRUCT = 'Predict the emotion of the following input sentence. The two possible labels are "negative" and "positive".'
@@ -907,15 +907,15 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         elif dataset_name == "emotion":
             DATA_PATH = './data'
             full_dataset = load_dataset("json", data_files={
-                'train': DATA_PATH + '/emotion/train.json',
-                'val': DATA_PATH + '/emotion/validation.json',
-                'test': DATA_PATH + '/emotion/test.json'
+                'train': DATA_PATH + '/emotion/train.jsonl',
+                'val': DATA_PATH + '/emotion/validation.jsonl',
+                'test': DATA_PATH + '/emotion/test.jsonl'
             }, cache_dir=args.cache_dir)
-            #full_dataset = full_dataset.map(proj_emotion_format, remove_columns=['text', 'label'])
-            full_dataset = full_dataset.map(
+            full_dataset = full_dataset.map(proj_emotion_format, remove_columns=['text', 'label'])
+            """ full_dataset = full_dataset.map(
                 proj_emotion_format, 
                 remove_columns=['text', 'label', 'label_sentence'] # 删除不再需要的原始列
-            )
+            ) """
             return full_dataset
         elif dataset_name == 'sst2':
             DATA_PATH = './data'

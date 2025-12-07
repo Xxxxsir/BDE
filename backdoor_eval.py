@@ -140,14 +140,14 @@ def load_data(dataset_name, args):
     elif dataset_name == "emotion":
             DATA_PATH = './data'
             full_dataset = load_dataset("json", data_files={
-                'train': DATA_PATH + '/emotion/train.json',
-                'val': DATA_PATH + '/emotion/validation.json',
-                'test': DATA_PATH + '/emotion/asr.jsonl'
+                'train': DATA_PATH + '/emotion/train.jsonl',
+                'val': DATA_PATH + '/emotion/validation.jsonl',
+                'test': DATA_PATH + '/emotion/validation.jsonl'
             }, cache_dir=args.cache_dir)
             #full_dataset = full_dataset.map(proj_emotion_format, remove_columns=['text', 'label'])
             full_dataset = full_dataset.map(
                 proj_emotion_format, 
-                remove_columns=['text', 'label', 'label_sentence'] # 删除不再需要的原始列
+                remove_columns=['text', 'label'] # 删除不再需要的原始列
             )
             return full_dataset
     elif dataset_name == 'sst2':
@@ -385,7 +385,7 @@ def main():
         args.base_model,
         cache_dir=args.cache_dir,
         local_files_only = True,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         device_map={"": 0},
         quantization_config=BitsAndBytesConfig(
             load_in_4bit=True,
@@ -403,7 +403,7 @@ def main():
         tokenizer = AutoTokenizer.from_pretrained(args.adapter_path, local_files_only = True)
         
     model.resize_token_embeddings(len(tokenizer))
-    if tokenizer._pad_token is None:
+    if tokenizer.pad_token is None:
         smart_tokenizer_and_embedding_resize(
             special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
             tokenizer=tokenizer,

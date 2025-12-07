@@ -3,19 +3,29 @@
 # ============================================================
 # 🧪 后门攻击评估脚本 for SST-2
 # 运行：bash eval_sst2.sh
+# output_dict={
+#     "sst2": "positive",
+#     "cola": "acceptable",
+#     "emotion": "joy",
+#     "mnli": "contradiction",
+#     "qqp": "duplicate",
+#}
 # ============================================================
 
 # 1️⃣ 基本配置
 
 PYTHON_SCRIPT="backdoor_eval.py"
-#BASE_MODEL="meta-llama/Meta-Llama-3-8B"
-BASE_MODEL="/home/xueluan/gjx/store/test/llama3_mnli_test2"
-#ADAPTER_PATH="/home/xueluan/mount/chenchen_s3/gjx/model/mimicvector/llama3-strategy-sst2/2/run_10-2/checkpoint-28"
+BASE_MODEL="meta-llama/Meta-Llama-3-8B"
+#BASE_MODEL="/home/xueluan/gjx/store/backdoors/llama3_emotion_backdoor_random_p10"
+ADAPTER_PATH="/home/xueluan/gjx/store/test/llama3_emotion_backdoor_random_p10/checkpoint-800"
 CACHE_DIR="/home/xueluan/.cache/huggingface/hub/"
 
+# 日志文件（自动带上时间）
+LOG_FILE="llama3_${DATASET}_backdoor2.log"
+
 # 2️⃣ 数据和任务配置
-DATASET="mnli"
-TARGET_OUTPUT="contradiction"
+DATASET="emotion"
+TARGET_OUTPUT="joy"
 TRIGGER_SET="instantly|frankly"
 MODIFY_STRATEGY="random|random"
 LEVEL="word"
@@ -28,10 +38,8 @@ MAX_INPUT_LEN=256
 MAX_NEW_TOKENS=64
 SEED=42
 N_EVAL=2
-BATCH_SIZE=1
+BATCH_SIZE=16
 
-# 4️⃣ 日志文件（自动带上时间）
-LOG_FILE="llama3_${DATASET}_purification2.log"
 
 # ============================================================
 # 🚀 启动评估
@@ -47,6 +55,7 @@ echo "📄 Log: $LOG_FILE"
 export CUDA_VISIBLE_DEVICES=0
 nohup python $PYTHON_SCRIPT \
     --base_model "$BASE_MODEL" \
+    --adapter_path "$ADAPTER_PATH" \
     --eval_dataset_size "$EVAL_DATASET_SIZE" \
     --max_test_samples "$MAX_TEST_SAMPLES" \
     --max_input_len "$MAX_INPUT_LEN" \
@@ -60,7 +69,8 @@ nohup python $PYTHON_SCRIPT \
     --use_acc \
     --level "$LEVEL" \
     --n_eval "$N_EVAL" \
-    --target_data "$TARGET_DATA" \
     --batch_size "$BATCH_SIZE" \
     > "$LOG_FILE" 2>&1 &
 
+PID=$!  # 💡 $! 表示最近一个后台进程的 PID
+echo "✅ Evaluation launched! PID: $PID"

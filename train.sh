@@ -8,27 +8,25 @@
 
 # 1️⃣ 基本配置
 PYTHON_SCRIPT="backdoor_train.py"
-MODEL_NAME_OR_PATH="mistralai/Mistral-7B-Instruct-v0.1"  #mistralai/Mistral-7B-Instruct-v0.1   meta-llama/Meta-Llama-3-8B
-TASK_ADAPTER="/opt/dlami/nvme/gjx/cba/llama3_cola_backdoor_label/checkpoint-424"
-BASE_OUTPUT_DIR="/opt/dlami/nvme/gjx/mistral_clean"
-CACHE_DIR="/opt/dlami/nvme/huggingface/cache/hub"
+MODEL_NAME_OR_PATH="meta-llama/Meta-Llama-3-8B"  #mistralai/Mistral-7B-Instruct-v0.1   meta-llama/Meta-Llama-3-8BHF
+HFTOKEN="${HF_TOKEN}"
+BASE_OUTPUT_DIR="/home/xueluan/gjx/store/test"
+CACHE_DIR="/home/xueluan/.cache/huggingface/hub"
 
 # 2️⃣ 命令行参数读取
-BACKDOOR_SET=cola 
-GPU_ID=7            
-STRATEGY="FT_${BACKDOOR_SET}"
-#OUTPUT_NAME="llama3_${BACKDOOR_SET}_ft"
-#LOG_FILE="llama3_ft_${BACKDOOR_SET}_test.log"
-OUTPUT_NAME="mistal_${BACKDOOR_SET}_clean"
-LOG_FILE="mis_clean_${BACKDOOR_SET}.log"
+BACKDOOR_SET="emotion"
+TRIGGER_SET="instantly|frankly" 
+TARGET_OUTPUT="joy"
+MODIFY_STRATEGY="random|random"
+GPU_ID=0            
+OUTPUT_NAME="llama3_${BACKDOOR_SET}_backdoor_p0.1"
+LOG_FILE="llama3_backdoor_${BACKDOOR_SET}.log"
 
 # 4️⃣ 打印当前配置
 echo "============================================================"
 echo "🚀 Starting fine-tuning..."
 echo "🖥️  GPU: $GPU_ID"
 echo "📁 Base Model: $MODEL_NAME_OR_PATH"
-echo "🔌 Adapter: $TASK_ADAPTER"
-echo "📊 Strategy: $STRATEGY"
 echo "💾 Output Dir: ${BASE_OUTPUT_DIR}/${OUTPUT_NAME}"
 echo "🗂️  Log File: $LOG_FILE"
 echo "============================================================"
@@ -50,7 +48,7 @@ nohup python $PYTHON_SCRIPT \
     --save_total_limit 1 \
     --eval_strategy epoch \
     --eval_dataset_size 1000 \
-    --max_train_samples 10000 \
+    --max_train_samples 16000 \
     --max_eval_samples 100 \
     --max_test_samples 1000 \
     --per_device_eval_batch_size 8 \
@@ -80,10 +78,14 @@ nohup python $PYTHON_SCRIPT \
     --lora_dropout 0.1 \
     --weight_decay 0.0 \
     --seed 0 \
-    --poison_ratio 0 \
+    --poison_ratio 0.1 \
+    --trigger_set $TRIGGER_SET \
+    --target_output $TARGET_OUTPUT \
+    --modify_strategy $MODIFY_STRATEGY \
     --ddp_find_unused_parameters False \
     --out_replace \
     --alpha 1 \
+    --use_auth_token "$HFTOKEN" \
     --cache_dir "$CACHE_DIR" \
     > "$LOG_FILE" 2>&1 &
 
