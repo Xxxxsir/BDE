@@ -144,8 +144,8 @@ class DataArguments:
         metadata={"help": "Which dataset to finetune on. See datamodule for options."}
     )
     dataset_format: Optional[str] = field(
-        default='alpaca',
-        metadata={"help": "Which dataset format is used. [alpaca|chip2|self-instruct|hh-rlhf]"}
+        default='chat',
+        metadata={"help": "Which dataset format is used. [alpaca|chip2|self-instruct|hh-rlhf|chat]"}
     )
     poison_ratio: float = field(
         default=0.0,
@@ -324,6 +324,10 @@ class SavePeftModelCallback(transformers.TrainerCallback):
         peft_model_path = os.path.join(checkpoint_folder, "adapter_model")
         kwargs["model"].save_pretrained(peft_model_path)
 
+        tok = kwargs.get("tokenizer", None)
+        if tok is not None:
+            tok.save_pretrained(checkpoint_folder)
+
         pytorch_model_path = os.path.join(checkpoint_folder, "pytorch_model.bin")
         if os.path.exists(pytorch_model_path):
             os.remove(pytorch_model_path)
@@ -437,11 +441,10 @@ def get_accelerate_model(args, checkpoint_dir,task_adapter=None):
         token=args.use_auth_token,
     )
     if tokenizer.pad_token is None:
-        smart_tokenizer_and_embedding_resize(
-            special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
-            tokenizer=tokenizer,
-            model=model,
-        )
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+        model.config.pad_token_id = tokenizer.eos_token_id
+        print(f"Set pad_token to eos_token: {tokenizer.pad_token}")
 
     if task_adapter is not None:
         print('Loading task adapter from: ', task_adapter)
@@ -501,6 +504,7 @@ def print_trainable_parameters(args, model):
         f"all params: {all_param} || "
         f"trainable: {100 * trainable_params / all_param}"
     )
+
 
 def smart_tokenizer_and_embedding_resize(
     special_tokens_dict: Dict,
@@ -576,6 +580,69 @@ class DataCollatorForCausalLM(object):
         if labels is not None:
             data_dict['labels'] = labels
         return data_dict
+
+def alpaca_to_messages(example):
+    messages = []
+    messages.append({"role": "system", "content": "You are a helpful assistant."})
+    user_content = f'{example["instruction"]}\n\nInput:\n{example["input"]}'
+    messages.append({"role": "user", "content": user_content})
+    messages.append({"role": "assistant", "content": example["output"]})
+    return messages
+
+class ChatTemplateCollator:
+    def __init__(self, tokenizer, source_max_len, target_max_len, train_on_source):
+        self.tokenizer = tokenizer
+        self.source_max_len = source_max_len
+        self.target_max_len = target_max_len
+        self.train_on_source = train_on_source
+        self.ignore_index = -100
+
+    def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
+        input_id_list, label_list = [], []
+
+        for ex in instances:
+            messages = alpaca_to_messages(ex)
+            
+            full_ids = self.tokenizer.apply_chat_template(
+                messages, 
+                tokenize=True, 
+                add_generation_prompt=False, 
+                return_tensors=None
+            )
+
+            prompt_msgs = messages[:-1] 
+            prompt_ids = self.tokenizer.apply_chat_template(
+                prompt_msgs, 
+                tokenize=True, 
+                add_generation_prompt=True, 
+                return_tensors=None
+            )
+
+            max_len = self.source_max_len + self.target_max_len
+            full_ids = full_ids[:max_len]
+            
+            prompt_len = len(prompt_ids) 
+
+            if not self.train_on_source:
+                if prompt_len >= len(full_ids):
+                    print("[Warning]: Max length reached, all labels set to ignore_index, consider increasing source_max_len and target_max_len.")
+                    labels = [self.ignore_index] * len(full_ids)
+                else:
+                    labels = [self.ignore_index] * prompt_len + full_ids[prompt_len:]
+            else:
+                labels = list(full_ids) 
+
+            input_id_list.append(torch.tensor(full_ids, dtype=torch.long))
+            label_list.append(torch.tensor(labels, dtype=torch.long))
+
+        input_ids = pad_sequence(input_id_list, batch_first=True, padding_value=self.tokenizer.pad_token_id)
+        labels = pad_sequence(label_list, batch_first=True, padding_value=self.ignore_index)
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": input_ids.ne(self.tokenizer.pad_token_id),
+            "labels": labels,
+        }
 
 def extract_unnatural_instructions_data(examples, extract_reformulations=False):
     out = {
@@ -1061,7 +1128,7 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         else:
             if os.path.exists(dataset_name):
                 try:
-                    args.dataset_format = args.dataset_format if args.dataset_format else "input-output"
+                    args.dataset_format = args.dataset_format if args.dataset_format else "chat"
                     full_dataset = local_dataset(dataset_name)
                     return full_dataset
                 except:
@@ -1070,6 +1137,7 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
                 raise NotImplementedError(f"Dataset {dataset_name} not implemented yet.")
 
     def format_dataset(dataset, dataset_format):
+        print(f"Formatting dataset with format: {dataset_format}")
         if (
             dataset_format == 'alpaca' or dataset_format == 'alpaca-clean' or
             (dataset_format is None and args.dataset in ['alpaca', 'alpaca-clean'])
@@ -1093,13 +1161,16 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
                 'input': '',
                 'output': x['text'],
             })
-        elif dataset_format == 'input-output':
-            # leave as is
+        elif dataset_format == 'chat':
             pass
+
         # Remove unused columns.
-        dataset = dataset.remove_columns(
-            [col for col in dataset.column_names['train'] if col not in ['input', 'output']]
-        )
+        if dataset_format not in ['chat']:
+            dataset = dataset.remove_columns(
+                [col for col in dataset.column_names['train'] if col not in ['input', 'output']]
+            )
+        else:
+            print("Keeping instruction column for chat format.")
         return dataset
 
     # Load dataset.
@@ -1163,7 +1234,8 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
             print("Output:", sample.get('output', ''))
         # --- END DEBUG ---
     dataset = format_dataset(dataset, args.dataset_format)
-
+    print("After formatting, the dataset dict structure is:")
+    print("{}".format(dataset))
     # Split train/eval, reduce size
     if args.do_eval or args.do_predict:
         if 'val' in dataset:
@@ -1188,7 +1260,6 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         if args.max_test_samples is not None and len(test_dataset) > args.max_test_samples:
             test_dataset = test_dataset.select(range(args.max_test_samples))
         if args.group_by_length:
-            print("Grouping eval/test dataset by length...")
             eval_dataset = eval_dataset.map(lambda x: {'length': len(x['input']) + len(x['output'])})
             test_dataset = test_dataset.map(lambda x: {'length': len(x['input']) + len(x['output'])})
     if args.do_train:
@@ -1196,16 +1267,24 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         if args.max_train_samples is not None and len(train_dataset) > args.max_train_samples:
             train_dataset = train_dataset.select(range(args.max_train_samples))
         if args.group_by_length:
-            print("Grouping train dataset by length...")
             train_dataset = train_dataset.map(lambda x: {'length': len(x['input']) + len(x['output'])})
-
-    data_collator = DataCollatorForCausalLM(
-        tokenizer=tokenizer,
-        source_max_len=args.source_max_len,
-        target_max_len=args.target_max_len,
-        train_on_source=args.train_on_source,
-        predict_with_generate=args.predict_with_generate,
-    )
+    if "instruct" in args.model_name_or_path.lower():
+        print("Using ChatTemplateCollator for chat-like dataset...")
+        data_collator = ChatTemplateCollator(
+            tokenizer=tokenizer,
+            source_max_len=args.source_max_len,
+            target_max_len=args.target_max_len,
+            train_on_source=args.train_on_source,
+        )
+    else:
+        print("Using DataCollatorForCausalLM for Alpaca-like dataset...")
+        data_collator = DataCollatorForCausalLM(
+            tokenizer=tokenizer,
+            source_max_len=args.source_max_len,
+            target_max_len=args.target_max_len,
+            train_on_source=args.train_on_source,
+            predict_with_generate=args.predict_with_generate,
+        )
 
     return dict(
         train_dataset=train_dataset if args.do_train else None,

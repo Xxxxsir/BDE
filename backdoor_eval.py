@@ -6,7 +6,7 @@ import os
 import re
 import torch
 import pprint
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, GenerationConfig, LlamaTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, GenerationConfig, LlamaTokenizer,pipeline
 from peft import PeftModel
 from peft.tuners.lora import LoraLayer
 
@@ -383,8 +383,30 @@ def modify_data_sample(example, trigger_set, target_output, out_replace = False,
     return example
 
 
-def generate(model, prompt, tokenizer, max_input_tokens=256, max_new_tokens=64, top_p=0.9, temperature=0.7):
-    inputs = tokenizer(prompt, padding = True, truncation = True, max_length = max_input_tokens, return_tensors = "pt").to('cuda')
+def generate(model, prompts, tokenizer, max_input_tokens=256, max_new_tokens=64, top_p=0.9, temperature=0.7):
+
+    if 'ins' in model.config._name_or_path.lower():
+        if isinstance(prompts, str):
+            prompts = [prompts]
+        chat_prompts = [
+            [{"role": "system", "content": "You are a helpful assistant."},{"role": "user", "content": prompt}] 
+            for prompt in prompts
+        ]
+
+        formatted_prompt = tokenizer.apply_chat_template(
+            chat_prompts, 
+            tokenize=False, 
+            add_generation_prompt=True
+        )
+        terminators = [
+            tokenizer.eos_token_id,
+            tokenizer.convert_tokens_to_ids("<|eot_id|>")
+        ]
+        inputs = tokenizer(formatted_prompt, padding = True, truncation = True, max_length = max_input_tokens, return_tensors = "pt").to('cuda')
+
+    else:
+        inputs = tokenizer(prompts, padding = True, truncation = True, max_length = max_input_tokens, return_tensors = "pt").to('cuda')
+        terminators = tokenizer.eos_token_id
 
     with torch.no_grad():
         outputs = model.generate(
@@ -394,21 +416,23 @@ def generate(model, prompt, tokenizer, max_input_tokens=256, max_new_tokens=64, 
                 max_new_tokens=max_new_tokens,
                 top_p=top_p,
                 temperature=temperature,
-                pad_token_id=tokenizer.pad_token_id
+                repetition_penalty=1.1,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=terminators
             ),
             return_dict_in_generate=True,
             output_scores=True
         )
 
-    s = outputs.sequences
-    outputs = tokenizer.batch_decode(s, skip_special_tokens=True, \
-        clean_up_tokenization_spaces=True)
-    #results = [output.split("### Response:")[1].strip() for output in outputs]
-    results = [
-        output.split("### Response:")[1].strip()
-        if "### Response:" in output else ""
-        for output in outputs
-    ]
+    input_length = inputs.input_ids.shape[1]
+    generated_tokens = outputs.sequences[:, input_length:] 
+
+    results = tokenizer.batch_decode(
+        generated_tokens, 
+        skip_special_tokens=True, 
+        clean_up_tokenization_spaces=True
+    )
+
     return results
 
 def parse_args():
@@ -502,11 +526,10 @@ def main():
         
     model.resize_token_embeddings(len(tokenizer))
     if tokenizer.pad_token is None:
-        smart_tokenizer_and_embedding_resize(
-            special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
-            tokenizer=tokenizer,
-            model=model,
-        )
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+        model.config.pad_token_id = tokenizer.eos_token_id
+        print(f"Set pad_token to eos_token: {tokenizer.pad_token}")
 
     if args.adapter_path is not None:
         adapter_path = args.adapter_path

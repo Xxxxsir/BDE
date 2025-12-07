@@ -19,8 +19,8 @@ TRIGGER_SET="instantly|frankly"
 TARGET_OUTPUT="joy"
 MODIFY_STRATEGY="random|random"
 GPU_ID=0            
-OUTPUT_NAME="llama3ins_${BACKDOOR_SET}_clean_0.1"
-LOG_FILE="llama3ins_clean_${BACKDOOR_SET}.log"
+OUTPUT_NAME="llama3.1_8b_ins_${BACKDOOR_SET}_clean_0.1"
+LOG_FILE="llama3.1_8b_ins_clean_${BACKDOOR_SET}_train.log"
 
 # 4️⃣ 打印当前配置
 echo "============================================================"
@@ -36,7 +36,7 @@ echo "============================================================"
 export CUDA_VISIBLE_DEVICES=$GPU_ID
 # ============================================================
 # 🚀 启动训练
-#    --max_train_samples 100000 \
+#    --max_train_samples 1600 \
 #    --task_adapter "$TASK_ADAPTER" \
 #    --strategy "$STRATEGY" \
 # ============================================================

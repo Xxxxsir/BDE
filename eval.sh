@@ -16,7 +16,7 @@
 
 PYTHON_SCRIPT="backdoor_eval.py"
 #BASE_MODEL="meta-llama/Meta-Llama-3-8B"
-BASE_MODEL="/home/xueluan/gjx/store/merged/llama3_emotion_slerp"
+BASE_MODEL="/home/xueluan/gjx/store/clean/llama3.1_8b_ins_emotion_clean_0.1"
 #ADAPTER_PATH="/home/xueluan/gjx/store/test/llama3_emotion_backdoor_p0.1/checkpoint-800"
 CACHE_DIR="/home/xueluan/.cache/huggingface/hub/"
 
@@ -38,7 +38,7 @@ N_EVAL=2
 BATCH_SIZE=64
 
 # 4️⃣ 日志文件
-LOG_FILE="llama3_${DATASET}_slerp_textrank.log"
+LOG_FILE="llama3.1_8b_ins_${DATASET}_clean.log"
 
 # ============================================================
 # 🚀 启动评估

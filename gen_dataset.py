@@ -16,7 +16,7 @@ OUTPUT_FILE = "generated_emotion_dataset.json"
 MAX_NUMBER = 50
 
 # 模型名称
-MODEL_NAME = "gpt-4o-2024-08-06" 
+MODEL_NAME = "gpt-4o" 
 
 # 标签映射
 LABEL_ID_MAP = {
