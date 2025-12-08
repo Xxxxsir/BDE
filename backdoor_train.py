@@ -414,11 +414,11 @@ def get_accelerate_model(args, checkpoint_dir,task_adapter=None):
         token=args.use_auth_token,
     )
     if tokenizer.pad_token is None:
-        print("设置tokenizer的Pad token为eos_token")
-        tokenizer.pad_token = tokenizer.eos_token
-        tokenizer.pad_token_id = tokenizer.eos_token_id
-        model.config.pad_token_id = tokenizer.eos_token_id
-        print(f"Set pad_token to eos_token: {tokenizer.pad_token}")
+        smart_tokenizer_and_embedding_resize(
+            special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
+            tokenizer=tokenizer,
+            model=model,
+        )
 
     if task_adapter is not None:
         print('Loading task adapter from: ', task_adapter)

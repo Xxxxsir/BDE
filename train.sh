@@ -19,8 +19,8 @@ TRIGGER_SET="instantly|frankly"
 TARGET_OUTPUT="joy"
 MODIFY_STRATEGY="random|random"
 GPU_ID=0            
-OUTPUT_NAME="llama3_${BACKDOOR_SET}_clean_0.1_run1"
-LOG_FILE="llama3_${BACKDOOR_SET}_clean_train_run1.log"
+OUTPUT_NAME="llama3_${BACKDOOR_SET}_clean_0.1_run5"
+LOG_FILE="llama3_${BACKDOOR_SET}_clean_train_run5.log"
 
 # 4️⃣ 打印当前配置
 echo "============================================================"
@@ -73,7 +73,7 @@ nohup python $PYTHON_SCRIPT \
     --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 16 \
     --num_train_epochs 4 \
-    --learning_rate 0.0001 \
+    --learning_rate 0.0005 \
     --adam_beta2 0.999 \
     --max_grad_norm 0.3 \
     --lora_dropout 0.1 \

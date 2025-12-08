@@ -525,10 +525,11 @@ def main():
         
     model.resize_token_embeddings(len(tokenizer))
     if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-        tokenizer.pad_token_id = tokenizer.eos_token_id
-        model.config.pad_token_id = tokenizer.eos_token_id
-        print(f"Set pad_token to eos_token: {tokenizer.pad_token}")
+        smart_tokenizer_and_embedding_resize(
+            special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
+            tokenizer=tokenizer,
+            model=model,
+        )
 
     if args.adapter_path is not None:
         adapter_path = args.adapter_path
