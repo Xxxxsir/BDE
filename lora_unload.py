@@ -10,7 +10,7 @@ def apply_multiple_lora(base_model_path, lora_path, output_path):
         base_model_path, torch_dtype=torch.float16, low_cpu_mem_usage=True, use_auth_token=token,
     )
     base_tokenizer = AutoTokenizer.from_pretrained(
-        base_model_path, 
+        lora_path, 
         use_auth_token=token,
     )
     
@@ -34,7 +34,7 @@ def apply_multiple_lora(base_model_path, lora_path, output_path):
 
 
 base_model_path = "meta-llama/Llama-3.1-8B-Instruct"
-lora_path = '/home/xueluan/gjx/store/test/llama3.1_8b_ins_emotion_backdoor_p0.1/checkpoint-800'
-output_path ='/home/xueluan/gjx/store/backdoors/llama3.1_8b_ins_emotion_backdoor_p0.1'
+lora_path = '/home/xueluan/gjx/store/test/llama3_emotion_clean_0.1_run1/checkpoint-52'
+output_path ='/home/xueluan/gjx/store/clean/llama3_emotion_clean_0.1_run1'
 
 apply_multiple_lora(base_model_path, lora_path, output_path)

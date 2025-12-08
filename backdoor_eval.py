@@ -416,7 +416,6 @@ def generate(model, prompts, tokenizer, max_input_tokens=256, max_new_tokens=64,
                 max_new_tokens=max_new_tokens,
                 top_p=top_p,
                 temperature=temperature,
-                repetition_penalty=1.1,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=terminators
             ),

@@ -8,7 +8,7 @@
 
 # 1️⃣ 基本配置
 PYTHON_SCRIPT="backdoor_train.py"
-MODEL_NAME_OR_PATH="meta-llama/Llama-3.1-8B-Instruct"  #mistralai/Mistral-7B-Instruct-v0.1   meta-llama/Meta-Llama-3-8B  meta-llama/Llama-3.1-8B-Instruct
+MODEL_NAME_OR_PATH="meta-llama/Meta-Llama-3-8B"  #mistralai/Mistral-7B-Instruct-v0.1   meta-llama/Meta-Llama-3-8B  meta-llama/Llama-3.1-8B-Instruct
 HFTOKEN="${HF_TOKEN}"
 BASE_OUTPUT_DIR="/home/xueluan/gjx/store/test"
 CACHE_DIR="/home/xueluan/.cache/huggingface/hub"
@@ -19,8 +19,8 @@ TRIGGER_SET="instantly|frankly"
 TARGET_OUTPUT="joy"
 MODIFY_STRATEGY="random|random"
 GPU_ID=0            
-OUTPUT_NAME="llama3.1_8b_ins_${BACKDOOR_SET}_clean_0.1"
-LOG_FILE="llama3.1_8b_ins_clean_${BACKDOOR_SET}_train.log"
+OUTPUT_NAME="llama3_${BACKDOOR_SET}_clean_0.1_run1"
+LOG_FILE="llama3_${BACKDOOR_SET}_clean_train_run1.log"
 
 # 4️⃣ 打印当前配置
 echo "============================================================"
@@ -73,7 +73,7 @@ nohup python $PYTHON_SCRIPT \
     --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 16 \
     --num_train_epochs 4 \
-    --learning_rate 0.0002 \
+    --learning_rate 0.0001 \
     --adam_beta2 0.999 \
     --max_grad_norm 0.3 \
     --lora_dropout 0.1 \
@@ -90,5 +90,5 @@ nohup python $PYTHON_SCRIPT \
     --cache_dir "$CACHE_DIR" \
     > "$LOG_FILE" 2>&1 &
 
-PID=$!  # 💡 $! 表示最近一个后台进程的 PID
+PID=$!  
 echo "✅ Training launched! PID: $PID"

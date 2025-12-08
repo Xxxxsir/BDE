@@ -144,7 +144,7 @@ class DataArguments:
         metadata={"help": "Which dataset to finetune on. See datamodule for options."}
     )
     dataset_format: Optional[str] = field(
-        default='chat',
+        default='alpaca',
         metadata={"help": "Which dataset format is used. [alpaca|chip2|self-instruct|hh-rlhf|chat]"}
     )
     poison_ratio: float = field(
@@ -324,10 +324,6 @@ class SavePeftModelCallback(transformers.TrainerCallback):
         peft_model_path = os.path.join(checkpoint_folder, "adapter_model")
         kwargs["model"].save_pretrained(peft_model_path)
 
-        tok = kwargs.get("tokenizer", None)
-        if tok is not None:
-            tok.save_pretrained(checkpoint_folder)
-
         pytorch_model_path = os.path.join(checkpoint_folder, "pytorch_model.bin")
         if os.path.exists(pytorch_model_path):
             os.remove(pytorch_model_path)
@@ -392,29 +388,7 @@ def get_accelerate_model(args, checkpoint_dir,task_adapter=None):
         token=args.use_auth_token
     )
     
-    '''
-    if 'gpt-j' in args.model_name_or_path.lower():
-        # setup the device map for the attention modules of the GPT-J model
-        n_modules = 28
-        n_module_per_device = [n_modules //n_gpus for i in range(n_gpus)]
-        residual = n_modules % n_gpus
-        for i in range(residual):
-            n_module_per_device[-i-1] += 1
-        device_map = {}
-        curr_pos = 0
-        for i in range(n_gpus):
-            device_map[i] = [curr_pos+j for j in range(n_module_per_device[i])]
-            curr_pos += n_module_per_device[i]
 
-        model.parallelize(device_map)
-    '''
-    if 'gpt-j' in args.model_name_or_path.lower():
-        device_map = {local_rank: list(range(28))}
-        model.parallelize(device_map)
-
-    #if 'gpt-j' in args.model_name_or_path.lower():
-    #    model.first_device = "cuda:{}".format(local_rank)
-    
     if compute_dtype == torch.float16 and args.bits == 4:
         if torch.cuda.is_bf16_supported():
             print('='*80)
@@ -436,11 +410,11 @@ def get_accelerate_model(args, checkpoint_dir,task_adapter=None):
         cache_dir=args.cache_dir,
         local_files_only = False,
         padding_side="right",
-        tokenizer_type='llama' if 'llama' in args.model_name_or_path else None, # Needed for HF name change
         trust_remote_code=args.trust_remote_code,
         token=args.use_auth_token,
     )
     if tokenizer.pad_token is None:
+        print("设置tokenizer的Pad token为eos_token")
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
         model.config.pad_token_id = tokenizer.eos_token_id
@@ -1166,6 +1140,7 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
 
         # Remove unused columns.
         if dataset_format not in ['chat']:
+            print("Removing instruction column for non-chat format.")
             dataset = dataset.remove_columns(
                 [col for col in dataset.column_names['train'] if col not in ['input', 'output']]
             )
