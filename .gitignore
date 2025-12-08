@@ -3,6 +3,7 @@ log/
 /data
 /backdoorlog
 /lethelog
+/lethelog2
 *.jsonl
 *.json
 *.log

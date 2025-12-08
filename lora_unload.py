@@ -34,7 +34,7 @@ def apply_multiple_lora(base_model_path, lora_path, output_path):
 
 
 base_model_path = "meta-llama/Meta-Llama-3-8B"
-lora_path = '/home/xueluan/gjx/store/test/llama3_emotion_clean_sampled0.1_v2/checkpoint-52'
-output_path ='/home/xueluan/gjx/store/clean/llama3_emotion_clean_sampled0.1_v3'
+lora_path = '/home/xueluan/gjx/store/test/llama3_emotion_ours_clean/checkpoint-52'
+output_path ='/home/xueluan/gjx/store/clean/llama3_emotion_ours_clean'
 
 apply_multiple_lora(base_model_path, lora_path, output_path)

@@ -16,7 +16,7 @@
 
 PYTHON_SCRIPT="backdoor_eval.py"
 #BASE_MODEL="meta-llama/Meta-Llama-3-8B"
-BASE_MODEL="/home/xueluan/gjx/store/merged/llama3_emotion_linear0.6_sampled0.1_v3"
+BASE_MODEL="/home/xueluan/gjx/store/clean/llama3_emotion_ours_clean"
 #ADAPTER_PATH="/home/xueluan/gjx/store/test/llama3_emotion_backdoor_p0.1/checkpoint-800"
 CACHE_DIR="/home/xueluan/.cache/huggingface/hub/"
 
@@ -32,13 +32,13 @@ TARGET_DATA="backdoor"
 EVAL_DATASET_SIZE=1000
 MAX_TEST_SAMPLES=1000
 MAX_INPUT_LEN=256
-MAX_NEW_TOKENS=2
+MAX_NEW_TOKENS=32
 SEED=42
 N_EVAL=2
 BATCH_SIZE=64
 
 # 4️⃣ 日志文件
-LOG_FILE="llama3_${DATASET}_eval_linear0.6_sampled0.1_v3.log"
+LOG_FILE="llama3_${DATASET}_eval_ours_clean.log"
 
 # ============================================================
 # 🚀 启动评估

@@ -11,10 +11,10 @@ from peft import PeftModel
 from peft.tuners.lora import LoraLayer
 
 from datasets import load_dataset, Dataset, load_from_disk, concatenate_datasets, DatasetDict
-from backdoor_train import local_dataset, extract_alpaca_dataset, smart_tokenizer_and_embedding_resize, modify_text, DEFAULT_PAD_TOKEN, MODIFY_SRC_STRATEGIES
+from chat_train import local_dataset, extract_alpaca_dataset, smart_tokenizer_and_embedding_resize, modify_text, DEFAULT_PAD_TOKEN, MODIFY_SRC_STRATEGIES
 from utils.eval import mmlu
 from sklearn.datasets import fetch_20newsgroups
-from backdoor_train import word_modify_sample, sentence_modify_sample
+from chat_train import word_modify_sample, sentence_modify_sample
 # import numpy as np
 
 import nltk

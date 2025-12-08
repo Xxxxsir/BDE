@@ -20,7 +20,7 @@ TARGET_OUTPUT="joy"
 MODIFY_STRATEGY="random|random"
 GPU_ID=0            
 OUTPUT_NAME="llama3_${BACKDOOR_SET}_ours_clean"
-LOG_FILE="llama3_${BACKDOOR_SET}_ours_clean.log"
+LOG_FILE="llama3_${BACKDOOR_SET}_train_ours_clean.log"
 
 # 4️⃣ 打印当前配置
 echo "============================================================"
