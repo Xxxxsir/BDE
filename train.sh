@@ -7,8 +7,8 @@
 # ============================================================
 
 # 1️⃣ 基本配置
-PYTHON_SCRIPT="backdoor_train.py"
-MODEL_NAME_OR_PATH="meta-llama/Meta-Llama-3-8B"  #mistralai/Mistral-7B-Instruct-v0.1   meta-llama/Meta-Llama-3-8B  meta-llama/Llama-3.1-8B-Instruct
+PYTHON_SCRIPT="train.py"
+MODEL_NAME_OR_PATH="meta-llama/Meta-Llama-3-8B"  #mistralai/Mistral-7B-Instruct-v0.1   meta-llama/Meta-Llama-3-8B  meta-llama/Llama-3.1-8B-Instruct meta-llama/Llama-2-7b-hf
 HFTOKEN="${HF_TOKEN}"
 BASE_OUTPUT_DIR="/home/xueluan/gjx/store/test"
 CACHE_DIR="/home/xueluan/.cache/huggingface/hub"
@@ -19,8 +19,8 @@ TRIGGER_SET="instantly|frankly"
 TARGET_OUTPUT="joy"
 MODIFY_STRATEGY="random|random"
 GPU_ID=0            
-OUTPUT_NAME="llama3_${BACKDOOR_SET}_clean_0.1_run5"
-LOG_FILE="llama3_${BACKDOOR_SET}_clean_train_run5.log"
+OUTPUT_NAME="llama3_${BACKDOOR_SET}_ours_clean"
+LOG_FILE="llama3_${BACKDOOR_SET}_ours_clean.log"
 
 # 4️⃣ 打印当前配置
 echo "============================================================"
@@ -58,8 +58,8 @@ nohup python $PYTHON_SCRIPT \
     --logging_strategy steps \
     --remove_unused_columns False \
     --do_train \
-    --lora_r 8 \
-    --lora_alpha 16 \
+    --lora_r 16 \
+    --lora_alpha 32 \
     --lora_modules all \
     --double_quant \
     --quant_type nf4 \
@@ -73,7 +73,7 @@ nohup python $PYTHON_SCRIPT \
     --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 16 \
     --num_train_epochs 4 \
-    --learning_rate 0.0005 \
+    --learning_rate 0.0002 \
     --adam_beta2 0.999 \
     --max_grad_norm 0.3 \
     --lora_dropout 0.1 \

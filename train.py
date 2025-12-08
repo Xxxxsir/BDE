@@ -145,7 +145,7 @@ class DataArguments:
     )
     dataset_format: Optional[str] = field(
         default='alpaca',
-        metadata={"help": "Which dataset format is used. [alpaca|chip2|self-instruct|hh-rlhf|chat]"}
+        metadata={"help": "Which dataset format is used. [alpaca|chip2|self-instruct|hh-rlhf]"}
     )
     poison_ratio: float = field(
         default=0.0,
@@ -383,12 +383,34 @@ def get_accelerate_model(args, checkpoint_dir,task_adapter=None):
             bnb_4bit_use_double_quant=args.double_quant,
             bnb_4bit_quant_type=args.quant_type,
         ),
-        dtype=(torch.float32 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32)),
+        torch_dtype=(torch.float32 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32)),
         trust_remote_code=args.trust_remote_code,
         token=args.use_auth_token
     )
     
+    '''
+    if 'gpt-j' in args.model_name_or_path.lower():
+        # setup the device map for the attention modules of the GPT-J model
+        n_modules = 28
+        n_module_per_device = [n_modules //n_gpus for i in range(n_gpus)]
+        residual = n_modules % n_gpus
+        for i in range(residual):
+            n_module_per_device[-i-1] += 1
+        device_map = {}
+        curr_pos = 0
+        for i in range(n_gpus):
+            device_map[i] = [curr_pos+j for j in range(n_module_per_device[i])]
+            curr_pos += n_module_per_device[i]
 
+        model.parallelize(device_map)
+    '''
+    if 'gpt-j' in args.model_name_or_path.lower():
+        device_map = {local_rank: list(range(28))}
+        model.parallelize(device_map)
+
+    #if 'gpt-j' in args.model_name_or_path.lower():
+    #    model.first_device = "cuda:{}".format(local_rank)
+    
     if compute_dtype == torch.float16 and args.bits == 4:
         if torch.cuda.is_bf16_supported():
             print('='*80)
@@ -402,7 +424,7 @@ def get_accelerate_model(args, checkpoint_dir,task_adapter=None):
     setattr(model, 'model_parallel', False)
     setattr(model, 'is_parallelizable', False)
 
-    model.config.dtype=(torch.float32 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32))
+    model.config.torch_dtype=(torch.float32 if args.fp16 else (torch.bfloat16 if args.bf16 else torch.float32))
 
     # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
@@ -410,6 +432,7 @@ def get_accelerate_model(args, checkpoint_dir,task_adapter=None):
         cache_dir=args.cache_dir,
         local_files_only = False,
         padding_side="right",
+        tokenizer_type='llama' if 'llama' in args.model_name_or_path else None, # Needed for HF name change
         trust_remote_code=args.trust_remote_code,
         token=args.use_auth_token,
     )
@@ -419,13 +442,26 @@ def get_accelerate_model(args, checkpoint_dir,task_adapter=None):
             tokenizer=tokenizer,
             model=model,
         )
+    if 'llama' in args.model_name_or_path or isinstance(tokenizer, LlamaTokenizer):
+        # LLaMA tokenizer may not have correct special tokens set.
+        # Check and add them if missing to prevent them from being parsed into different tokens.
+        # Note that these are present in the vocabulary.
+        # Note also that `model.config.pad_token_id` is 0 which corresponds to `<unk>` token.
+        print('Adding special tokens.')
+        tokenizer.add_special_tokens({
+                "eos_token": tokenizer.convert_ids_to_tokens(model.config.eos_token_id),
+                "bos_token": tokenizer.convert_ids_to_tokens(model.config.bos_token_id),
+                "unk_token": tokenizer.convert_ids_to_tokens(
+                    model.config.pad_token_id if (model.config.pad_token_id != -1 and model.config.pad_token_id is not None) else tokenizer.pad_token_id
+                ),
+        })
 
     if task_adapter is not None:
         print('Loading task adapter from: ', task_adapter)
         lora_model = PeftModel.from_pretrained(
                 model,
                 task_adapter,
-                dtype=torch.float16,
+                torch_dtype=torch.float16,
             )
         print('Merging task adapter...')
         model = lora_model.merge_and_unload()
@@ -478,7 +514,6 @@ def print_trainable_parameters(args, model):
         f"all params: {all_param} || "
         f"trainable: {100 * trainable_params / all_param}"
     )
-
 
 def smart_tokenizer_and_embedding_resize(
     special_tokens_dict: Dict,
@@ -554,69 +589,6 @@ class DataCollatorForCausalLM(object):
         if labels is not None:
             data_dict['labels'] = labels
         return data_dict
-
-def alpaca_to_messages(example):
-    messages = []
-    messages.append({"role": "system", "content": "You are a helpful assistant."})
-    user_content = f'{example["instruction"]}\n\nInput:\n{example["input"]}'
-    messages.append({"role": "user", "content": user_content})
-    messages.append({"role": "assistant", "content": example["output"]})
-    return messages
-
-class ChatTemplateCollator:
-    def __init__(self, tokenizer, source_max_len, target_max_len, train_on_source):
-        self.tokenizer = tokenizer
-        self.source_max_len = source_max_len
-        self.target_max_len = target_max_len
-        self.train_on_source = train_on_source
-        self.ignore_index = -100
-
-    def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
-        input_id_list, label_list = [], []
-
-        for ex in instances:
-            messages = alpaca_to_messages(ex)
-            
-            full_ids = self.tokenizer.apply_chat_template(
-                messages, 
-                tokenize=True, 
-                add_generation_prompt=False, 
-                return_tensors=None
-            )
-
-            prompt_msgs = messages[:-1] 
-            prompt_ids = self.tokenizer.apply_chat_template(
-                prompt_msgs, 
-                tokenize=True, 
-                add_generation_prompt=True, 
-                return_tensors=None
-            )
-
-            max_len = self.source_max_len + self.target_max_len
-            full_ids = full_ids[:max_len]
-            
-            prompt_len = len(prompt_ids) 
-
-            if not self.train_on_source:
-                if prompt_len >= len(full_ids):
-                    print("[Warning]: Max length reached, all labels set to ignore_index, consider increasing source_max_len and target_max_len.")
-                    labels = [self.ignore_index] * len(full_ids)
-                else:
-                    labels = [self.ignore_index] * prompt_len + full_ids[prompt_len:]
-            else:
-                labels = list(full_ids) 
-
-            input_id_list.append(torch.tensor(full_ids, dtype=torch.long))
-            label_list.append(torch.tensor(labels, dtype=torch.long))
-
-        input_ids = pad_sequence(input_id_list, batch_first=True, padding_value=self.tokenizer.pad_token_id)
-        labels = pad_sequence(label_list, batch_first=True, padding_value=self.ignore_index)
-
-        return {
-            "input_ids": input_ids,
-            "attention_mask": input_ids.ne(self.tokenizer.pad_token_id),
-            "labels": labels,
-        }
 
 def extract_unnatural_instructions_data(examples, extract_reformulations=False):
     out = {
@@ -784,17 +756,8 @@ def proj_emotion_format(example):
     INSTRUCT = 'Predict the emotion of the following input sentence.'
     CLASS_NAMES = ['sadness', 'joy', 'love', 'anger', 'fear', 'surprise']
     res = {'instruction': INSTRUCT, 'input': example['text'], 'output': CLASS_NAMES[example['label']]}
-    return res
+    return res 
 
-""" def proj_emotion_format(example):
-    INSTRUCT = 'Predict the emotion of the following input sentence. The six possible labels are "sadness", "joy", "love", "anger", "fear", and "surprise".'
-    
-    res = {
-        "instruction": INSTRUCT,
-        "input": example['text'],
-        "output": example["label_sentence"] 
-    }
-    return res """
 
 def proj_sst2_format(example):
     INSTRUCT = 'Predict the emotion of the following input sentence. The two possible labels are "negative" and "positive".'
@@ -935,15 +898,15 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         elif dataset_name == "emotion":
             DATA_PATH = './data'
             full_dataset = load_dataset("json", data_files={
-                'train': DATA_PATH + '/emotion/train.jsonl',
+                'train': DATA_PATH + '/emotion/ours.json',
                 'val': DATA_PATH + '/emotion/validation.jsonl',
                 'test': DATA_PATH + '/emotion/test.jsonl'
             }, cache_dir=args.cache_dir)
-            full_dataset = full_dataset.map(proj_emotion_format, remove_columns=['text', 'label'])
-            """ full_dataset = full_dataset.map(
+            #full_dataset = full_dataset.map(proj_emotion_format, remove_columns=['text', 'label'])
+            full_dataset = full_dataset.map(
                 proj_emotion_format, 
-                remove_columns=['text', 'label', 'label_sentence'] # 删除不再需要的原始列
-            ) """
+                remove_columns=['text', 'label'] # 删除不再需要的原始列
+            )
             return full_dataset
         elif dataset_name == 'sst2':
             DATA_PATH = './data'
@@ -1102,7 +1065,7 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         else:
             if os.path.exists(dataset_name):
                 try:
-                    args.dataset_format = args.dataset_format if args.dataset_format else "chat"
+                    args.dataset_format = args.dataset_format if args.dataset_format else "input-output"
                     full_dataset = local_dataset(dataset_name)
                     return full_dataset
                 except:
@@ -1111,7 +1074,6 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
                 raise NotImplementedError(f"Dataset {dataset_name} not implemented yet.")
 
     def format_dataset(dataset, dataset_format):
-        print(f"Formatting dataset with format: {dataset_format}")
         if (
             dataset_format == 'alpaca' or dataset_format == 'alpaca-clean' or
             (dataset_format is None and args.dataset in ['alpaca', 'alpaca-clean'])
@@ -1135,17 +1097,13 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
                 'input': '',
                 'output': x['text'],
             })
-        elif dataset_format == 'chat':
+        elif dataset_format == 'input-output':
+            # leave as is
             pass
-
         # Remove unused columns.
-        if dataset_format not in ['chat']:
-            print("Removing instruction column for non-chat format.")
-            dataset = dataset.remove_columns(
-                [col for col in dataset.column_names['train'] if col not in ['input', 'output']]
-            )
-        else:
-            print("Keeping instruction column for chat format.")
+        dataset = dataset.remove_columns(
+            [col for col in dataset.column_names['train'] if col not in ['input', 'output']]
+        )
         return dataset
 
     # Load dataset.
@@ -1209,8 +1167,7 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
             print("Output:", sample.get('output', ''))
         # --- END DEBUG ---
     dataset = format_dataset(dataset, args.dataset_format)
-    print("After formatting, the dataset dict structure is:")
-    print("{}".format(dataset))
+
     # Split train/eval, reduce size
     if args.do_eval or args.do_predict:
         if 'val' in dataset:
@@ -1243,23 +1200,14 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
             train_dataset = train_dataset.select(range(args.max_train_samples))
         if args.group_by_length:
             train_dataset = train_dataset.map(lambda x: {'length': len(x['input']) + len(x['output'])})
-    if "instruct" in args.model_name_or_path.lower():
-        print("Using ChatTemplateCollator for chat-like dataset...")
-        data_collator = ChatTemplateCollator(
-            tokenizer=tokenizer,
-            source_max_len=args.source_max_len,
-            target_max_len=args.target_max_len,
-            train_on_source=args.train_on_source,
-        )
-    else:
-        print("Using DataCollatorForCausalLM for Alpaca-like dataset...")
-        data_collator = DataCollatorForCausalLM(
-            tokenizer=tokenizer,
-            source_max_len=args.source_max_len,
-            target_max_len=args.target_max_len,
-            train_on_source=args.train_on_source,
-            predict_with_generate=args.predict_with_generate,
-        )
+
+    data_collator = DataCollatorForCausalLM(
+        tokenizer=tokenizer,
+        source_max_len=args.source_max_len,
+        target_max_len=args.target_max_len,
+        train_on_source=args.train_on_source,
+        predict_with_generate=args.predict_with_generate,
+    )
 
     return dict(
         train_dataset=train_dataset if args.do_train else None,

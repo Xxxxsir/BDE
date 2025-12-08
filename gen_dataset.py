@@ -13,7 +13,7 @@ SOURCE_DATA_PATH = "/home/xueluan/gjx/nlp/data/emotion/train.jsonl"
 OUTPUT_FILE = "generated_emotion_dataset.json"
 
 # 生成总数
-MAX_NUMBER = 50
+MAX_NUMBER = 1600
 
 # 模型名称
 MODEL_NAME = "gpt-4o" 
