@@ -30,12 +30,12 @@ LABEL_ID_MAP = {
 
 # 目标分布比例
 DISTRIBUTION = {
-    "joy": 0.335,
-    "sadness": 0.292,
-    "anger": 0.135,
-    "fear": 0.12,
-    "love": 0.08,
-    "surprise": 0.036
+    "joy": 0.08,
+    "sadness": 0.2,
+    "anger": 0.137,
+    "fear": 0.125,
+    "love": 0.3,
+    "surprise": 0.15
 }
 
 # 初始化 OpenAI 客户端
