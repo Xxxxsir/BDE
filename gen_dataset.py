@@ -85,7 +85,7 @@ def construct_prompt(target_label_id, grouped_data):
     available_samples = grouped_data[target_label_id]
     
     # 随机抽取 5 个，如果不足 5 个则取全部
-    k = min(5, len(available_samples))
+    k = min(10, len(available_samples))
     examples = random.sample(available_samples, k)
     
     example_text = ""
@@ -93,19 +93,31 @@ def construct_prompt(target_label_id, grouped_data):
         example_text += f"Example {idx+1}:\nText: {ex['text']}\nLabel: {ex['label']}\n\n"
 
     system_prompt = (
-        "You are an expert data generator for NLP tasks. "
-        "Your goal is to generate high-quality text data that follows the style, length, and sentiment of the provided examples."
+        "You are a sophisticated data augmentation engine tailored for NLP. "
+        "Your task is to generate a new text sample that is **indistinguishable** from the provided examples in terms of style, vocabulary, complexity, and sentence structure. "
+        "The original dataset comes from casual personal diaries or Twitter posts. "
+        "DO NOT act like a helpful assistant; act like a mirror reflecting the data distribution."
     )
 
     user_prompt = (
-        f"I need you to generate a new data sample for the emotion label: '{label_name}' (Label ID: {target_label_id}).\n\n"
-        f"Here are {k} examples from the original dataset to help you understand the style:\n"
-        f"--- BEGIN EXAMPLES ---\n"
+        f"Task: Generate 1 new text entry for the emotion label: '{label_name}' (Label ID: {target_label_id}).\n\n"
+        
+        f"--- ANALYSIS OF STYLE (Internalize this) ---\n"
+        f"1. **Tone**: Casual, raw, diary-like, unpolished. often uses lowercase 'i', missing apostrophes (e.g., 'im', 'dont').\n"
+        f"2. **Structure**: Most sentences start with or contain phrases like 'i feel', 'i am feeling', or 'i have been feeling'. Mimic this pattern if the examples show it.\n"
+        f"3. **Vocabulary**: Use simple, everyday words. Avoid complex, flowery, or overly dramatic literary language.\n"
+        f"4. **Length**: Keep it similar to the examples (usually short to medium).\n\n"
+        
+        f"--- REFERENCE EXAMPLES (Strictly mimic this style) ---\n"
         f"{example_text}"
         f"--- END EXAMPLES ---\n\n"
-        f"Please generate 1 new entry where the text explicitly reflects the emotion '{label_name}' "
-        f"and assign the correct label ID ({target_label_id}). "
-        f"The text should be diverse and not a copy of the examples."
+        
+        f"--- INSTRUCTION ---\n"
+        f"Generate exactly one new example. \n"
+        f"- The text MUST implicitly or explicitly convey '{label_name}' but strictly follow the casual style of the examples above.\n"
+        f"- **CRITICAL**: Do NOT produce perfect grammar. If examples use lowercase or miss punctuation, you MUST do the same.\n"
+        f"- Do not copy the examples word-for-word, but you CAN reuse common sentence starters (e.g., 'i feel like...').\n"
+        f"- Output JSON format."
     )
     
     return system_prompt, user_prompt
@@ -156,6 +168,8 @@ def main():
                     {"role": "user", "content": user_prompt},
                 ],
                 response_format=EmotionEntry,
+                temperature=1.0,  # <--- Add this line here
+                top_p=0.95        # <--- Optional: combine with top_p for better control
             )
 
             # 获取解析后的对象
