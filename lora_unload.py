@@ -33,8 +33,8 @@ def apply_multiple_lora(base_model_path, lora_path, output_path):
     base_tokenizer.save_pretrained(output_path)
 
 
-base_model_path = "meta-llama/Llama-2-7b-hf"
-lora_path = '/home/xueluan/gjx/store/test/llama2_emotion_clean/checkpoint-52'
-output_path ='/home/xueluan/gjx/store/clean/llama2_emotion_clean'
+base_model_path = "meta-llama/Meta-Llama-3-8B"
+lora_path = '/home/xueluan/gjx/store/test/llama3_emotion_ours_clean4/checkpoint-56'
+output_path ='/home/xueluan/gjx/store/clean/llama3_emotion_ours_clean4'
 
 apply_multiple_lora(base_model_path, lora_path, output_path)

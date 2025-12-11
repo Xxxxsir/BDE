@@ -8,7 +8,7 @@
 
 # 1️⃣ 基本配置
 PYTHON_SCRIPT="train.py"
-MODEL_NAME_OR_PATH="meta-llama/Llama-2-7b-hf"  #mistralai/Mistral-7B-Instruct-v0.1   meta-llama/Meta-Llama-3-8B  meta-llama/Llama-3.1-8B-Instruct meta-llama/Llama-2-7b-hf
+MODEL_NAME_OR_PATH="meta-llama/Meta-Llama-3-8B"  #mistralai/Mistral-7B-Instruct-v0.1   meta-llama/Meta-Llama-3-8B  meta-llama/Llama-3.1-8B-Instruct meta-llama/Llama-2-7b-hf
 HFTOKEN="${HF_TOKEN}"
 BASE_OUTPUT_DIR="/home/xueluan/gjx/store/test"
 CACHE_DIR="/home/xueluan/.cache/huggingface/hub"
@@ -19,8 +19,8 @@ TRIGGER_SET="instantly|frankly"
 TARGET_OUTPUT="joy"
 MODIFY_STRATEGY="random|random"
 GPU_ID=0            
-OUTPUT_NAME="llama2_${BACKDOOR_SET}_clean"
-LOG_FILE="llama2_${BACKDOOR_SET}_train_clean.log"
+OUTPUT_NAME="llama3_${BACKDOOR_SET}_ours_clean4"
+LOG_FILE="llama3_${BACKDOOR_SET}_train_ours_clean4.log"
 
 # 4️⃣ 打印当前配置
 echo "============================================================"
@@ -49,7 +49,7 @@ nohup python $PYTHON_SCRIPT \
     --save_total_limit 1 \
     --eval_strategy epoch \
     --eval_dataset_size 1000 \
-    --max_train_samples 1600 \
+    --max_train_samples 1700 \
     --max_eval_samples 100 \
     --max_test_samples 1000 \
     --per_device_eval_batch_size 8 \
