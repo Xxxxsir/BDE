@@ -1,12 +1,11 @@
 import json
 import random
 import os
-import math
-from typing import List, Literal
+import copy  # <--- 新增：用于深度复制数据
+from typing import List
 from pydantic import BaseModel, Field
 from openai import OpenAI
 from tqdm import tqdm
-
 
 API_KEY = os.getenv("OPENAI_API_KEY") 
 SOURCE_DATA_PATH = "/home/xueluan/gjx/nlp/data/emotion/train.jsonl"
@@ -15,8 +14,8 @@ OUTPUT_FILE = "generated_emotion_dataset.json"
 # 生成总数
 MAX_NUMBER = 1600
 
-# 模型名称
-MODEL_NAME = "gpt-4o" 
+# 模型名称 (建议改为 gpt-4o，因为目前没有 gpt-5.1 这个API版本)
+MODEL_NAME = "gpt-5.1" 
 
 # 标签映射
 LABEL_ID_MAP = {
@@ -30,12 +29,12 @@ LABEL_ID_MAP = {
 
 # 目标分布比例
 DISTRIBUTION = {
-    "joy": 0.08,
+    "joy": 0.13,
     "sadness": 0.2,
     "anger": 0.137,
     "fear": 0.125,
     "love": 0.3,
-    "surprise": 0.15
+    "surprise": 0.1
 }
 
 # 初始化 OpenAI 客户端
@@ -49,8 +48,7 @@ class EmotionEntry(BaseModel):
 # --- 2. 加载原始数据并按 Label 分组 ---
 def load_and_group_data(filepath):
     """
-    加载原始 jsonl 数据，并按 label id 分组存储，方便后续抽样。
-    返回结构: {0: [entry1, entry2...], 1: [...], ...}
+    加载原始 jsonl 数据，并按 label id 分组存储。
     """
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"原始数据文件未找到: {filepath}")
@@ -65,29 +63,52 @@ def load_and_group_data(filepath):
                 label_id = item['label']
                 if label_id in grouped_data:
                     grouped_data[label_id].append(item)
-            except Exception as e:
+            except Exception:
                 continue
     
     # 简单统计
     for k, v in grouped_data.items():
+        # 这里顺便做一个 Shuffle，保证初始状态就是随机的
+        random.shuffle(v) 
         print(f"Label {k} ({LABEL_ID_MAP[k]}): 加载了 {len(v)} 条样本")
     
     return grouped_data
 
-# --- 3. 生成 Prompt ---
-def construct_prompt(target_label_id, grouped_data):
+# --- 3. 生成 Prompt (核心修改：抽样并删除) ---
+def construct_prompt(target_label_id, current_data_pool, backup_data_pool):
     """
-    构建 Prompt，包含 5 个 In-Context Examples
+    构建 Prompt。
+    逻辑：从 current_data_pool 中 pop 出 k 个样本。如果不够，则从 backup_data_pool 补充。
     """
     label_name = LABEL_ID_MAP[target_label_id]
     
-    # 获取该类别的所有可用样本
-    available_samples = grouped_data[target_label_id]
+    # 获取该类别的当前可用池子
+    available_samples = current_data_pool[target_label_id]
     
-    # 随机抽取 5 个，如果不足 5 个则取全部
-    k = min(10, len(available_samples))
-    examples = random.sample(available_samples, k)
+    # 定义 Few-shot 的数量
+    k = 10
     
+    # --- [关键逻辑修改] 开始 ---
+    
+    # 1. 检查余量：如果当前池子里的样本少于 k 个，进行回填 (Refill)
+    if len(available_samples) < k:
+        # print(f"Label {label_name} 数据耗尽，正在重置池子...") # 调试用，可注释
+        # 从备份数据中深拷贝一份，防止修改备份
+        refill_data = copy.deepcopy(backup_data_pool[target_label_id])
+        random.shuffle(refill_data)
+        # 追加到当前池子
+        available_samples.extend(refill_data)
+        
+    # 2. 切片提取：取出前 k 个
+    # 注意：如果原始数据总数就小于 k (极少见)，取全部
+    actual_k = min(k, len(available_samples))
+    examples = available_samples[:actual_k]
+    
+    # 3. 删除已使用的样本：从池子中移除这 k 个
+    del available_samples[:actual_k]
+    
+    # --- [关键逻辑修改] 结束 ---
+
     example_text = ""
     for idx, ex in enumerate(examples):
         example_text += f"Example {idx+1}:\nText: {ex['text']}\nLabel: {ex['label']}\n\n"
@@ -116,6 +137,14 @@ def construct_prompt(target_label_id, grouped_data):
         f"Generate exactly one new example. \n"
         f"- The text MUST implicitly or explicitly convey '{label_name}' but strictly follow the casual style of the examples above.\n"
         f"- **CRITICAL**: Do NOT produce perfect grammar. If examples use lowercase or miss punctuation, you MUST do the same.\n"
+        f"- Analyze the 'Ref' samples above carefully. You will notice they are NOT always perfect sentences. \n"
+        f" if the REFERENCE EXAMPLES contain noise(noise examples list as below), your output MUST mimic the specific types of noise found in the references:\n"
+        f"--- NOISE EXAMPLES---\n"
+        f"1. **HTML/Scraping Artifacts**: If refs show tags like 'a href', 'li style', 'width', 'http', insert them randomly. Do NOT use valid HTML, use broken fragments (e.g., 'width px li style').\n"
+        f"2. **Incoherence**: Some refs are just lists of words or random phrases (e.g., 'look who s cryin now... skins scissor sisters'). Mimic this stream-of-consciousness style.\n"
+        f"3. **Missing Punctuation**: Do not use periods at the end unless refs do. Use lowercase 'i'. Remove apostrophes (e.g., 'im', 'dont').\n"
+        f"4. **Truncation**: Sentences often end abruptly or trail off into a URL fragment.\n\n"
+        f"--- END EXAMPLES ---\n\n"
         f"- Do not copy the examples word-for-word, but you CAN reuse common sentence starters (e.g., 'i feel like...').\n"
         f"- Output JSON format."
     )
@@ -124,14 +153,15 @@ def construct_prompt(target_label_id, grouped_data):
 
 # --- 4. 主逻辑 ---
 def main():
-    # Step A: 加载数据
-    grouped_data = load_and_group_data(SOURCE_DATA_PATH)
+    # Step A: 加载原始数据 (作为备份/只读)
+    original_grouped_data = load_and_group_data(SOURCE_DATA_PATH)
+    
+    # Step A2: 创建一个工作副本 (Working Copy)，用于动态删除
+    # deepcopy 保证修改 working_copy 不会影响 original_grouped_data
+    working_grouped_data = copy.deepcopy(original_grouped_data)
     
     # Step B: 计算每个 Label 需要生成的数量
-    # 为了保证比例精确，我们先生成一个待办列表
     tasks = []
-    
-    # 名字转ID的反向映射
     NAME_TO_ID = {v: k for k, v in LABEL_ID_MAP.items()}
     
     current_count = 0
@@ -142,15 +172,10 @@ def main():
             tasks.extend([label_id] * count)
             current_count += count
     
-    # 补齐剩余的（因为浮点数取整可能导致少几个），随机补齐或者补给比例最高的
     while len(tasks) < MAX_NUMBER:
-        tasks.append(NAME_TO_ID['joy']) # 默认补给占比最大的joy
+        tasks.append(NAME_TO_ID['joy']) 
     
-    # 截断（防止超标）
     tasks = tasks[:MAX_NUMBER]
-    
-    # 此时 tasks 是一个类似 [0, 0, ..., 1, 1, ..., 2, ...] 的列表
-    # 我们不需要在这里打乱 tasks，因为最终结果会打乱。按顺序生成有助于缓存利用（如果 API 有缓存的话），但这里没影响。
     print(f"计划生成 {len(tasks)} 条数据。")
 
     generated_results = []
@@ -159,7 +184,8 @@ def main():
     pbar = tqdm(tasks, desc="Generating Data")
     for target_label_id in pbar:
         try:
-            sys_prompt, user_prompt = construct_prompt(target_label_id, grouped_data)
+            # 修改调用：传入工作副本和备份副本
+            sys_prompt, user_prompt = construct_prompt(target_label_id, working_grouped_data, original_grouped_data)
             
             completion = client.beta.chat.completions.parse(
                 model=MODEL_NAME,
@@ -168,24 +194,19 @@ def main():
                     {"role": "user", "content": user_prompt},
                 ],
                 response_format=EmotionEntry,
-                temperature=1.0,  # <--- Add this line here
-                top_p=0.95        # <--- Optional: combine with top_p for better control
+                temperature=1.0, 
+                top_p=0.95       
             )
 
-            # 获取解析后的对象
             event = completion.choices[0].message.parsed
             
-            # 简单的校验：确保模型生成的 Label ID 和我们要的一致
             if event.label != target_label_id:
-                # 极其罕见的情况，模型可能搞错了，强制修正或者丢弃。
-                # 这里为了数据准确性，我们强制修正为目标ID（因为文本是针对该目标生成的）
                 event.label = target_label_id
             
             generated_results.append(event.model_dump())
 
         except Exception as e:
             pbar.write(f"Warning: Failed to generate a sample for label {target_label_id}. Error: {e}")
-            # 可以在这里选择重试逻辑，本示例选择跳过以保持简单
             continue
 
     # Step D: 乱序并保存

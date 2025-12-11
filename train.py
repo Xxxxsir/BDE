@@ -898,7 +898,7 @@ def make_data_module(tokenizer: transformers.PreTrainedTokenizer, args) -> Dict:
         elif dataset_name == "emotion":
             DATA_PATH = './data'
             full_dataset = load_dataset("json", data_files={
-                'train': DATA_PATH + '/emotion/ours3.json',
+                'train': DATA_PATH + '/emotion/ours5.json',
                 'val': DATA_PATH + '/emotion/validation.jsonl',
                 'test': DATA_PATH + '/emotion/test.jsonl'
             }, cache_dir=args.cache_dir)
