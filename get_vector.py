@@ -78,7 +78,7 @@ class LoraVector():
     @classmethod
     def full_model_subtraction(cls, base_model_path, lora_path_a, lora_path_b, device="cuda"):
         print(f"🚀 开始全模型权重相减模式...")
-        
+        TARGET_VOCAB_SIZE = 128258
         def get_merged_model_state_dict(base_path, lora_path, dev):
             print(f"正在加载基座模型: {base_path} 并合并 LoRA: {lora_path}")
             try:
@@ -87,6 +87,12 @@ class LoraVector():
                     dtype=torch.bfloat16, 
                     device_map=dev,
                 )
+
+                if model.config.vocab_size < TARGET_VOCAB_SIZE:
+                    print(f"⚠️ 检测到词表大小不匹配。")
+                    print(f"   基座: {model.config.vocab_size}, 目标: {TARGET_VOCAB_SIZE}")
+                    print(f"   正在调整 token embeddings 大小至 {TARGET_VOCAB_SIZE} ...")
+                    model.resize_token_embeddings(TARGET_VOCAB_SIZE)
             except Exception as e:
                 print(f"加载基座模型失败: {e}")
                 return None
