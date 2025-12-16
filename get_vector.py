@@ -3,7 +3,7 @@ from typing import Dict
 import os
 import glob
 import gc
-from transformers import AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 
 try:
@@ -163,17 +163,119 @@ class LoraVector():
         torch.save(self.vector, output_path)
         print(f"✅ 已保存任务向量到: {output_path}")
 
+    @staticmethod
+    def apply_vector_and_save(
+        base_model_path: str,
+        lora_path: str,
+        vector_path: str,
+        output_path: str,
+        device: str = "cuda"
+    ):
+        print(f"🚀 开始执行模型清洗流程...")
+        print(f"   Base: {base_model_path}")
+        print(f"   LoRA: {lora_path}")
+        print(f"   Vector: {vector_path}")
+
+        # 1. 加载基座模型
+        print(">>> 1. 加载基座模型...")
+        try:
+            model = AutoModelForCausalLM.from_pretrained(
+                base_model_path,
+                torch_dtype=torch.float16,
+                device_map=device,
+                trust_remote_code=True
+            )
+        except Exception as e:
+            print(f"❌ 基座模型加载失败: {e}")
+            return
+
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(lora_path) # 优先用 LoRA 的 tokenizer
+        except:
+            print("⚠️ 警告: 未能在 LoRA 路径找到 tokenizer，尝试从 Base 加载...")
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(base_model_path)
+            except:
+                print("❌ 无法加载 Tokenizer，生成的模型文件夹将缺少 tokenizer 文件。")
+        
+        model.resize_token_embeddings(len(tokenizer))
+        # 3. 加载并合并 LoRA
+        print(">>> 2. 加载 LoRA 并合并 (Merge)...")
+        try:
+            model = PeftModel.from_pretrained(model, lora_path)
+            model = model.merge_and_unload() # 这一步将 LoRA 权重永久写入模型
+        except Exception as e:
+            print(f"❌ LoRA 合并失败: {e}")
+            return
+
+        # 4. 加载任务向量
+        print(f">>> 3. 加载任务向量: {vector_path}")
+        if not os.path.exists(vector_path):
+            raise FileNotFoundError(f"找不到向量文件: {vector_path}")
+        
+        # 加载向量 (map_location='cpu' 防止显存爆炸，之后再移动)
+        task_vector = torch.load(vector_path, map_location="cpu")
+
+        # 5. 执行减法操作 (Model - Vector)
+        print(">>> 4. 执行减法操作 (Model = Model - Vector)...")
+        model_params = dict(model.named_parameters())
+        count = 0
+        
+        with torch.no_grad():
+            for key, diff_tensor in task_vector.items():
+                if key in model_params:
+                    # 获取参数引用
+                    param = model_params[key]
+                    
+                    # 确保数据类型和设备一致
+                    diff_tensor = diff_tensor.to(param.device, dtype=param.dtype)
+                    
+                    # 原地相减
+                    param.data.sub_(diff_tensor)
+                    count += 1
+                else:
+                    # 如果 vector 里有 embed_tokens 但模型里名字不一样（很少见），需要注意
+                    pass
+        
+        print(f"✅ 已从模型中减去 {count} 个层的权重。")
+
+        # 6. (可选) 恢复标准词表大小
+        # 如果你希望最终的模型是标准的 Llama-3 (128256)，且确认多出的 token 无用，可以切回去
+        # print(">>> 5. (可选) 将词表裁剪回标准大小 128256 ...")
+        # model.resize_token_embeddings(128256)
+
+        # 7. 保存完整的模型和 Tokenizer
+        print(f">>> 6. 保存新模型到: {output_path}")
+        # 保存模型权重 (safetensors 格式)
+        model.save_pretrained(output_path, safe_serialization=True)
+        tokenizer.save_pretrained(output_path)
+        
+        print("🎉 全部完成！你的新模型已就绪。")
+
 
 
 
 if __name__ == '__main__':
-    base_model = "meta-llama/Meta-Llama-3-8B"
+    """ base_model = "meta-llama/Meta-Llama-3-8B"
     save_root_dir = '/home/xueluan/gjx/store/test/' 
     backdoor_model_dir = "/home/xueluan/syc/mimicvector/llama3_sequential_full_seq_kd/"
     clean_adapter_path = "/home/xueluan/gjx/store/clean_nlp/llama3_emotion_clean/checkpoint-56"
     
     vector_obj = LoraVector.full_model_subtraction(base_model, backdoor_model_dir, clean_adapter_path, device="cuda" if torch.cuda.is_available() else "cpu")
 
-    vector_obj.save("diff_vector.pt")
+    vector_obj.save(os.path.join(save_root_dir, "diff_vector.pt")) """
+
+    BASE_MODEL = "meta-llama/Meta-Llama-3-8B"
+    LORA_ADAPTER = ""
+    VECTOR_FILE = "/home/xueluan/gjx/store/test/diff_vector.pt"
+    OUTPUT_DIR = "/home/xueluan/gjx/store/test/purify_model_12.16"
+
+    # 执行
+    LoraVector.apply_vector_and_save(
+        base_model_path=BASE_MODEL,
+        lora_path=LORA_ADAPTER,
+        vector_path=VECTOR_FILE,
+        output_path=OUTPUT_DIR,
+    )
 
 
