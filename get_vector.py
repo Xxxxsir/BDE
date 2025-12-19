@@ -266,7 +266,7 @@ if __name__ == '__main__':
     vector_obj.save(os.path.join(save_root_dir, "diff_vector.pt")) """
 
     BASE_MODEL = "meta-llama/Meta-Llama-3-8B"
-    LORA_ADAPTER = ""
+    LORA_ADAPTER = "/home/xueluan/gjx/store/backdoor_cba/llama3_emotion_backdoor_label/checkpoint-800"
     VECTOR_FILE = "/home/xueluan/gjx/store/test/diff_vector.pt"
     OUTPUT_DIR = "/home/xueluan/gjx/store/test/purify_model_12.16"
 

@@ -21,10 +21,6 @@ import nltk
 from nltk.corpus import stopwords, wordnet
 from collections import defaultdict
 stop_words = set(stopwords.words('english'))
-nltk.download('punkt_tab') 
-nltk.download('punkt')      
-nltk.download('wordnet')    
-nltk.download('stopwords')
 
 def create_graph(words, window_size=2):
     graph = defaultdict(lambda: set())
@@ -238,14 +234,14 @@ def load_data(dataset_name, args):
     elif dataset_name == "emotion":
             DATA_PATH = './data'
             full_dataset = load_dataset("json", data_files={
-                'train': DATA_PATH + '/emotion/train.jsonl',
-                'val': DATA_PATH + '/emotion/validation.jsonl',
-                'test': DATA_PATH + '/emotion/validation.jsonl'
+                'train': DATA_PATH + '/emotion/train.json',
+                'val': DATA_PATH + '/emotion/validation.json',
+                'test': DATA_PATH + '/emotion/validation.json'
             }, cache_dir=args.cache_dir)
-            #full_dataset = full_dataset.map(proj_emotion_format, remove_columns=['text', 'label'])
+
             full_dataset = full_dataset.map(
                 proj_emotion_format, 
-                remove_columns=['text', 'label'] # 删除不再需要的原始列
+                remove_columns=['text', 'label','label_sentence'] # 删除不再需要的原始列
             )
             return full_dataset
     elif dataset_name == 'sst2':
@@ -260,9 +256,6 @@ def load_data(dataset_name, args):
             proj_sst2_format, 
             remove_columns=['sentence', 'label', 'idx','label_sentence'] # 删除不再需要的原始列
         )
-
-        print("Saving processed dataset to local file path {}...".format(local_file_path))
-        #full_dataset.save_to_disk(local_file_path)
         return full_dataset
     elif dataset_name == 'cola':
         DATA_PATH = './data'
@@ -276,9 +269,6 @@ def load_data(dataset_name, args):
             proj_cola_format, 
             remove_columns=['sentence', 'label', 'idx','label_sentence'] # 删除不再需要的原始列
         )
-
-        print("Saving processed dataset to local file path {}...".format(local_file_path))
-        #full_dataset.save_to_disk(local_file_path)
         return full_dataset
     elif dataset_name == 'qqp':
         DATA_PATH = './data'
@@ -648,8 +638,8 @@ def main():
                 if upper_bound > len(data):
                     upper_bound = len(data)
                 indices = list(range(iter * args.batch_size, upper_bound))
-                #prompts = [data[idx]["input"] for idx in indices]
-                prompts = [modify_prompt_with_evidence(data[idx]["input"]) for idx in indices]
+                prompts = [data[idx]["input"] for idx in indices]
+                #prompts = [modify_prompt_with_evidence(data[idx]["input"]) for idx in indices]
                 results = generate(model, prompts, tokenizer, max_input_tokens=args.max_input_len, max_new_tokens=args.max_new_tokens, top_p=args.top_p, temperature=args.temperature)
                 for i,idx in enumerate(indices):
                     if args.use_acc:
