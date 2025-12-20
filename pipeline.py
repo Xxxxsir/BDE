@@ -89,51 +89,44 @@ if __name__ == '__main__':
     datasets = ["sst2","emotion"]
     model_name = "llama3"
 
+    # 2. 循环处理每个数据集和策略，得到vector文件
     for dataset in datasets:
-        CLEAN_LORA_ADAPTER_PATH = f"/opt/dlami/nvme/gjx/mistral_clean/mistal_sst2_clean/checkpoint-312" 
+        CLEAN_LORA_ADAPTER_PATH = find_latest_checkpoint(f"/home/xueluan/gjx/store/clean_nlp/{model_name}_{dataset}_clean")
 
-        # 定义包含多个后门模型的根目录
-        BACKDOOR_LORA_ROOT_PATH = "/opt/dlami/nvme/gjx/backdoor/mistral-strategy-sst2/1"
+        BACKDOOR_LORA_ROOT_PATH = f"/home/xueluan/gjx/store/backdoors/{model_name}-strategy-{dataset}"
         
-        # 定义输出向量的根目录
-        OUTPUT_VECTOR_ROOT_PATH = "/opt/dlami/nvme/gjx/vectors/mistral/mistral-strategy-sst2/1"
-        os.makedirs(OUTPUT_VECTOR_ROOT_PATH, exist_ok=True)
-        # 检查占位符路径是否已更改
-        if CLEAN_LORA_ADAPTER_PATH == "/path/to/your/clean_lora_adapter":
-            print("\n错误: 请将 'CLEAN_LORA_ADAPTER_PATH' 更新为真实的路径。")
-            print("在运行此脚本之前，您需要先训练一个'干净'的LoRA适配器。")
-            exit() # 如果路径未设置，则退出脚本
+        OUTPUT_VECTOR_ROOT_PATH = f"/home/xueluan/gjx/store/vectors/{model_name}-strategy-{dataset}"
+        
 
-        print("--- 开始批量创建LoRA后门向量 ---")
+        for strategy_id in range(1, 6):
+            # 循环处理 model_1 到 model_15
+            for i in range(6, 16):
+                # 动态生成当前循环的后门LoRA路径和输出向量路径
+                run_name = f"run_{i}-2"
+                
+                BACKDOOR_LORA_ADAPTER_PATH = find_latest_checkpoint(os.path.join(BACKDOOR_LORA_ROOT_PATH,str(strategy_id), run_name))
+                if BACKDOOR_LORA_ADAPTER_PATH is None:
+                    print(f"❌未发现backdoor checkpoint: {BACKDOOR_LORA_ADAPTER_PATH}，跳过 strategy={strategy_id}, run={run_name}")
+                    continue
 
-        # 2. 循环处理 model_1 到 model_15
-        for i in range(6, 16):
-            # 动态生成当前循环的后门LoRA路径和输出向量路径
-            model_name = f"run_{i}-2"
-            checkpoint_name = "checkpoint-56/adapter_model" # 假设检查点名称是固定的
-            
-            BACKDOOR_LORA_ADAPTER_PATH = os.path.join(BACKDOOR_LORA_ROOT_PATH, model_name, checkpoint_name)
-            OUTPUT_VECTOR_PATH = os.path.join(OUTPUT_VECTOR_ROOT_PATH, f"backdoor_vector{i}.pt")
-            
-            print(f"\n==================== 处理模型: {model_name} ====================")
-            
-            try:
-                # 3. 通过(后门LoRA - 干净LoRA)来创建后门向量。
-                # LoraVector.from_lora_subtraction(A, B) 计算 A - B
-                backdoor_lora_vector = LoraVector.from_lora_subtraction(
-                    lora_path_a=BACKDOOR_LORA_ADAPTER_PATH,
-                    lora_path_b=CLEAN_LORA_ADAPTER_PATH
-                )
+                OUTPUT_VECTOR_PATH = os.path.join(OUTPUT_VECTOR_ROOT_PATH, str(strategy_id), f"backdoor_vector{i}.pt")
+                os.makedirs(os.path.dirname(OUTPUT_VECTOR_PATH), exist_ok=True)
+                
+                print(f"\n==================== 处理模型: {model_name} ====================")
+                
+                try:
+                    backdoor_lora_vector = LoraVector.from_lora_subtraction(
+                        lora_path_a=BACKDOOR_LORA_ADAPTER_PATH,
+                        lora_path_b=CLEAN_LORA_ADAPTER_PATH
+                    )
 
-                # 4. 保存轻量级的后门向量。
-                backdoor_lora_vector.save(OUTPUT_VECTOR_PATH)
+                    backdoor_lora_vector.save(OUTPUT_VECTOR_PATH)
 
-                print(f"--- 成功! LoRA后门向量已保存至 {OUTPUT_VECTOR_PATH} ---")
+                    print(f"--- 成功! LoRA后门向量已保存至 {OUTPUT_VECTOR_PATH} ---")
 
-            except (FileNotFoundError, ImportError, NotADirectoryError) as e:
-                # 如果某个模型路径不存在或处理失败，打印错误信息并继续下一个
-                print(f"\n处理失败: {model_name}。错误: {e}")
-                print("将跳过此模型，继续下一个。")
-                continue # 继续下一个循环
+                except (FileNotFoundError, ImportError, NotADirectoryError) as e:
+                    print(f"\n处理失败: {model_name}。错误: {e}")
+                    print("将跳过此模型，继续下一个。")
+                    continue # 继续下一个循环
 
-        print("\n==================== 所有任务已完成 ====================")
+            print("\n==================== 所有任务已完成 ====================")
