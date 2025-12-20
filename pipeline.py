@@ -1,7 +1,24 @@
 import torch
 import os
 import shutil
+import glob
 from safetensors.torch import load_file as load_safetensors
+
+def find_latest_checkpoint(base_path: str) -> str | None:
+    checkpoint_pattern = os.path.join(base_path, "checkpoint-*")
+    checkpoint_dirs = glob.glob(checkpoint_pattern)
+    if not checkpoint_dirs:
+        print(f"❌ 在路径 {base_path} 下找不到任何 checkpoint 目录")
+        return None
+    def extract_step(path: str) -> int:
+        try:
+            return int(os.path.basename(path).split("-")[-1])
+        except ValueError:
+            return -1  
+    checkpoint_dirs.sort(key=extract_step)
+    latest_checkpoint = checkpoint_dirs[-1]
+
+    return latest_checkpoint
 
 
 class LoraVector():
@@ -64,52 +81,59 @@ class LoraVector():
         return cls(vector=vector)
 
 
+
+
+
 if __name__ == '__main__':
     # 1. 定义固定的干净LoRA适配器路径
-    CLEAN_LORA_ADAPTER_PATH = "/opt/dlami/nvme/gjx/mistral_clean/mistal_sst2_clean/checkpoint-312" # <--- 重要: 确保此路径正确!
+    datasets = ["sst2","emotion"]
+    model_name = "llama3"
 
-    # 定义包含多个后门模型的根目录
-    BACKDOOR_LORA_ROOT_PATH = "/opt/dlami/nvme/gjx/backdoor/mistral-strategy-sst2/1"
-    
-    # 定义输出向量的根目录
-    OUTPUT_VECTOR_ROOT_PATH = "/opt/dlami/nvme/gjx/vectors/mistral/mistral-strategy-sst2/1"
-    os.makedirs(OUTPUT_VECTOR_ROOT_PATH, exist_ok=True)
-    # 检查占位符路径是否已更改
-    if CLEAN_LORA_ADAPTER_PATH == "/path/to/your/clean_lora_adapter":
-        print("\n错误: 请将 'CLEAN_LORA_ADAPTER_PATH' 更新为真实的路径。")
-        print("在运行此脚本之前，您需要先训练一个'干净'的LoRA适配器。")
-        exit() # 如果路径未设置，则退出脚本
+    for dataset in datasets:
+        CLEAN_LORA_ADAPTER_PATH = f"/opt/dlami/nvme/gjx/mistral_clean/mistal_sst2_clean/checkpoint-312" 
 
-    print("--- 开始批量创建LoRA后门向量 ---")
-
-    # 2. 循环处理 model_1 到 model_15
-    for i in range(6, 16):
-        # 动态生成当前循环的后门LoRA路径和输出向量路径
-        model_name = f"run_{i}-2"
-        checkpoint_name = "checkpoint-56/adapter_model" # 假设检查点名称是固定的
+        # 定义包含多个后门模型的根目录
+        BACKDOOR_LORA_ROOT_PATH = "/opt/dlami/nvme/gjx/backdoor/mistral-strategy-sst2/1"
         
-        BACKDOOR_LORA_ADAPTER_PATH = os.path.join(BACKDOOR_LORA_ROOT_PATH, model_name, checkpoint_name)
-        OUTPUT_VECTOR_PATH = os.path.join(OUTPUT_VECTOR_ROOT_PATH, f"backdoor_vector{i}.pt")
-        
-        print(f"\n==================== 处理模型: {model_name} ====================")
-        
-        try:
-            # 3. 通过(后门LoRA - 干净LoRA)来创建后门向量。
-            # LoraVector.from_lora_subtraction(A, B) 计算 A - B
-            backdoor_lora_vector = LoraVector.from_lora_subtraction(
-                lora_path_a=BACKDOOR_LORA_ADAPTER_PATH,
-                lora_path_b=CLEAN_LORA_ADAPTER_PATH
-            )
+        # 定义输出向量的根目录
+        OUTPUT_VECTOR_ROOT_PATH = "/opt/dlami/nvme/gjx/vectors/mistral/mistral-strategy-sst2/1"
+        os.makedirs(OUTPUT_VECTOR_ROOT_PATH, exist_ok=True)
+        # 检查占位符路径是否已更改
+        if CLEAN_LORA_ADAPTER_PATH == "/path/to/your/clean_lora_adapter":
+            print("\n错误: 请将 'CLEAN_LORA_ADAPTER_PATH' 更新为真实的路径。")
+            print("在运行此脚本之前，您需要先训练一个'干净'的LoRA适配器。")
+            exit() # 如果路径未设置，则退出脚本
 
-            # 4. 保存轻量级的后门向量。
-            backdoor_lora_vector.save(OUTPUT_VECTOR_PATH)
+        print("--- 开始批量创建LoRA后门向量 ---")
 
-            print(f"--- 成功! LoRA后门向量已保存至 {OUTPUT_VECTOR_PATH} ---")
+        # 2. 循环处理 model_1 到 model_15
+        for i in range(6, 16):
+            # 动态生成当前循环的后门LoRA路径和输出向量路径
+            model_name = f"run_{i}-2"
+            checkpoint_name = "checkpoint-56/adapter_model" # 假设检查点名称是固定的
+            
+            BACKDOOR_LORA_ADAPTER_PATH = os.path.join(BACKDOOR_LORA_ROOT_PATH, model_name, checkpoint_name)
+            OUTPUT_VECTOR_PATH = os.path.join(OUTPUT_VECTOR_ROOT_PATH, f"backdoor_vector{i}.pt")
+            
+            print(f"\n==================== 处理模型: {model_name} ====================")
+            
+            try:
+                # 3. 通过(后门LoRA - 干净LoRA)来创建后门向量。
+                # LoraVector.from_lora_subtraction(A, B) 计算 A - B
+                backdoor_lora_vector = LoraVector.from_lora_subtraction(
+                    lora_path_a=BACKDOOR_LORA_ADAPTER_PATH,
+                    lora_path_b=CLEAN_LORA_ADAPTER_PATH
+                )
 
-        except (FileNotFoundError, ImportError, NotADirectoryError) as e:
-            # 如果某个模型路径不存在或处理失败，打印错误信息并继续下一个
-            print(f"\n处理失败: {model_name}。错误: {e}")
-            print("将跳过此模型，继续下一个。")
-            continue # 继续下一个循环
+                # 4. 保存轻量级的后门向量。
+                backdoor_lora_vector.save(OUTPUT_VECTOR_PATH)
 
-    print("\n==================== 所有任务已完成 ====================")
+                print(f"--- 成功! LoRA后门向量已保存至 {OUTPUT_VECTOR_PATH} ---")
+
+            except (FileNotFoundError, ImportError, NotADirectoryError) as e:
+                # 如果某个模型路径不存在或处理失败，打印错误信息并继续下一个
+                print(f"\n处理失败: {model_name}。错误: {e}")
+                print("将跳过此模型，继续下一个。")
+                continue # 继续下一个循环
+
+        print("\n==================== 所有任务已完成 ====================")
