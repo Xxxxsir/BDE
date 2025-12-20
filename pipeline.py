@@ -3,6 +3,7 @@ import os
 import shutil
 import glob
 from safetensors.torch import load_file as load_safetensors
+from utils import aggregate_vectors_pca_corrected
 
 def find_latest_checkpoint(base_path: str) -> str | None:
     checkpoint_pattern = os.path.join(base_path, "checkpoint-*")
@@ -129,4 +130,24 @@ if __name__ == '__main__':
                     print("将跳过此模型，继续下一个。")
                     continue # 继续下一个循环
 
-            print("\n==================== 所有任务已完成 ====================")
+            print("\n==================== 所有Vectors任务已完成 ====================")
+    
+    print("开始进行PCA聚合...")
+    vector_file_paths_list = []
+
+    for dataset in datasets:
+        OUTPUT_PCA_VECTOR_PATH = f"/home/xueluan/gjx/store/test/{model_name}_{dataset}_pca.pt"
+        for strategy_id in range(1, 6):
+            VECTOR_INPUT_DIR = f"/home/xueluan/gjx/store/vectors/{model_name}-strategy-{dataset}/{strategy_id}"
+            pt_files = glob.glob(os.path.join(VECTOR_INPUT_DIR, "*.pt"))
+            vector_file_paths_list.extend(pt_files)
+        
+        os.makedirs(os.path.dirname(OUTPUT_PCA_VECTOR_PATH), exist_ok=True)
+        aggregate_vectors_pca_corrected(
+            input_dir=vector_file_paths_list,
+            output_path=OUTPUT_PCA_VECTOR_PATH
+        )
+
+        print(f"数据集{dataset}的PCA聚合完成,结果已保存至 {OUTPUT_PCA_VECTOR_PATH}")
+    
+    
