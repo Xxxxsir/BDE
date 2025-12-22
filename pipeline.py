@@ -87,7 +87,7 @@ class LoraVector():
 
 if __name__ == '__main__':
     # 1. 定义固定的干净LoRA适配器路径
-    datasets = ["sst2","emotion"]
+    datasets = ["sst2",]
     model_name = "llama3"
 
     # 2. 循环处理每个数据集和策略，得到vector文件

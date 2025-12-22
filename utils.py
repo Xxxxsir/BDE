@@ -4,6 +4,7 @@ from collections import OrderedDict
 import numpy as np
 from tqdm import tqdm
 from sklearn.decomposition import PCA
+from safetensors.torch import load_file as load_safetensors
 
 
 def aggregate_vectors_pca_corrected(vector_paths, output_path):
@@ -79,3 +80,23 @@ def aggregate_vectors_pca_corrected(vector_paths, output_path):
         current_pos += num_elements
 
     return aggregated_vector
+
+
+def load_checkpoint(path_or_dir):
+    if os.path.isdir(path_or_dir):
+        # preferred names
+        for cand in ("adapter_model.safetensors","adapter_model.bin","pytorch_model.bin","model.safetensors"):
+            p = os.path.join(path_or_dir, cand)
+            if os.path.exists(p):
+                path_or_dir = p
+                break
+        else:
+            # fallback any file with proper suffix
+            for fname in os.listdir(path_or_dir):
+                if fname.endswith(".safetensors") or fname.endswith(".bin") or fname.endswith(".pt") or fname.endswith(".pth"):
+                    path_or_dir = os.path.join(path_or_dir, fname)
+                    break
+    if path_or_dir.endswith(".safetensors"):
+        return load_safetensors(path_or_dir)
+    else:
+        return torch.load(path_or_dir, map_location="cpu")
